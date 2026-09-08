@@ -1,0 +1,132 @@
+<div class="app-shell">
+  <!-- Desktop & Tablet Header -->
+  <header class="shell-header">
+    <a routerLink="/" class="brand-container">
+      <div class="brand-logo">
+        <img src="icons/icon.svg" alt="ZeroVault" width="36" height="36" />
+      </div>
+      <span class="brand-name">ZeroVault</span>
+      @if (!vaultService.isLocked()) {
+        <app-badge variant="success" size="sm">
+          <app-icon name="unlock" [size]="12" />
+          Unlocked
+        </app-badge>
+        @if (autoLockService.timeoutMinutes() > 0 && autoLockService.remainingSeconds() <= 60) {
+          <app-badge variant="warning" size="sm" [title]="'Vault auto-locking in ' + autoLockService.remainingSeconds() + 's due to inactivity'">
+            <app-icon name="clock" [size]="12" />
+            Locking in {{ autoLockService.remainingSeconds() }}s
+          </app-badge>
+        }
+      } @else {
+        <span class="brand-badge">PWA / Android</span>
+      }
+
+      @if (!pwaService.isOnline()) {
+        <app-badge variant="warning" size="sm" title="ZeroVault is operating offline. Local encrypted storage is active.">
+          <app-icon name="wifi-off" [size]="12" />
+          Offline
+        </app-badge>
+      }
+
+      @if (pwaService.updateAvailable()) {
+        <app-badge variant="accent" size="sm" title="An update is ready for ZeroVault">
+          <app-icon name="refresh" [size]="12" />
+          Update Ready
+        </app-badge>
+      }
+    </a>
+
+    <nav class="nav-group" aria-label="Desktop Navigation">
+      <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" class="nav-link">
+        Welcome
+      </a>
+
+      @if (vaultService.isLocked()) {
+        @if (!vaultService.hasExistingVault()) {
+          <a routerLink="/create-vault" routerLinkActive="active" class="nav-link">
+            <app-icon name="plus" [size]="15" />
+            Create
+          </a>
+        }
+        <a routerLink="/unlock" routerLinkActive="active" class="nav-link">
+          <app-icon name="unlock" [size]="15" />
+          Unlock
+        </a>
+      } @else {
+        <a routerLink="/dashboard" routerLinkActive="active" class="nav-link">
+          <app-icon name="shield" [size]="15" />
+          Dashboard
+        </a>
+      }
+
+      <a routerLink="/settings" routerLinkActive="active" class="nav-link">
+        <app-icon name="settings" [size]="15" />
+        Settings
+      </a>
+
+      @if (!vaultService.isLocked()) {
+        <app-button variant="danger" size="sm" (clicked)="handleManualLock()">
+          <app-icon name="lock" [size]="14" />
+          Lock Vault
+        </app-button>
+      }
+
+      <!-- Theme Switcher Button -->
+      <button
+        type="button"
+        class="theme-toggle-btn"
+        (click)="themeService.toggleTheme()"
+        [attr.aria-label]="themeService.currentTheme() === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'"
+      >
+        <app-icon [name]="themeService.currentTheme() === 'dark' ? 'sun' : 'moon'" [size]="18" />
+      </button>
+    </nav>
+  </header>
+
+  <!-- Main Routed Content Viewport -->
+  <main class="shell-content">
+    <router-outlet></router-outlet>
+  </main>
+
+  <!-- Mobile Bottom Navigation Bar -->
+  <nav class="mobile-nav-bar" aria-label="Mobile Navigation">
+    <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" class="mobile-nav-item">
+      <app-icon name="shield" [size]="18" />
+      <span>Home</span>
+    </a>
+
+    @if (vaultService.isLocked()) {
+      <a routerLink="/unlock" routerLinkActive="active" class="mobile-nav-item">
+        <app-icon name="unlock" [size]="18" />
+        <span>Unlock</span>
+      </a>
+    } @else {
+      <a routerLink="/dashboard" routerLinkActive="active" class="mobile-nav-item">
+        <app-icon name="key" [size]="18" />
+        <span>Vault</span>
+      </a>
+      <button type="button" class="mobile-nav-item lock-item" (click)="handleManualLock()">
+        <app-icon name="lock" [size]="18" />
+        <span>Lock</span>
+      </button>
+    }
+
+    <a routerLink="/settings" routerLinkActive="active" class="mobile-nav-item">
+      <app-icon name="settings" [size]="18" />
+      <span>Settings</span>
+    </a>
+
+    <button
+      type="button"
+      class="mobile-nav-item"
+      (click)="themeService.toggleTheme()"
+      aria-label="Toggle theme"
+    >
+      <app-icon [name]="themeService.currentTheme() === 'dark' ? 'sun' : 'moon'" [size]="18" />
+      <span>Theme</span>
+    </button>
+  </nav>
+
+  <!-- Toast Notification Overlay -->
+  <app-toast-container></app-toast-container>
+</div>
