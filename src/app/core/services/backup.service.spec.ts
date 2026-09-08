@@ -306,4 +306,53 @@ describe('BackupService (Encrypted Import/Export & Conflict-Free Merging)', () =
     expect(server).toBeDefined();
     expect(server?.title).toBe('Production Server');
   });
+
+  describe('parseGoogleCsv', () => {
+    it('should parse standard Google Chrome exported CSV correctly', () => {
+      const csv = `name,url,username,password,note
+Google,https://accounts.google.com,user@gmail.com,secret123,my personal note
+GitHub,https://github.com/login,gituser,ghpass_xyz,
+Amazon,https://amazon.com,user@gmail.com,amzpass,
+`;
+      const vault = backupService.parseGoogleCsv(csv);
+      expect(vault.entries.length).toBe(3);
+
+      expect(vault.entries[0].title).toBe('Google');
+      expect(vault.entries[0].website).toBe('https://accounts.google.com');
+      expect(vault.entries[0].username).toBe('user@gmail.com');
+      expect(vault.entries[0].password).toBe('secret123');
+      expect(vault.entries[0].notes).toBe('my personal note');
+      expect(vault.entries[0].category).toBe('login');
+
+      expect(vault.entries[1].title).toBe('GitHub');
+      expect(vault.entries[1].username).toBe('gituser');
+      expect(vault.entries[1].password).toBe('ghpass_xyz');
+    });
+
+    it('should handle quoted fields with commas and escaped quotes', () => {
+      const csv = `name,url,username,password,note
+"Work, Inc.","https://work.com/login","john,doe","pass""word","note with, commas and ""quotes"""
+`;
+      const vault = backupService.parseGoogleCsv(csv);
+      expect(vault.entries.length).toBe(1);
+      expect(vault.entries[0].title).toBe('Work, Inc.');
+      expect(vault.entries[0].username).toBe('john,doe');
+      expect(vault.entries[0].password).toBe('pass"word');
+      expect(vault.entries[0].notes).toBe('note with, commas and "quotes"');
+    });
+
+    it('should extract title from hostname when name is empty', () => {
+      const csv = `name,url,username,password,note
+,https://subdomain.example.org/path,testuser,pass1,
+`;
+      const vault = backupService.parseGoogleCsv(csv);
+      expect(vault.entries.length).toBe(1);
+      expect(vault.entries[0].title).toBe('subdomain.example.org');
+    });
+
+    it('should reject invalid or empty CSV', () => {
+      expect(() => backupService.parseGoogleCsv('')).toThrow('CSV file is empty.');
+      expect(() => backupService.parseGoogleCsv('col1,col2\nval1,val2')).toThrow('Invalid CSV format: Missing "password" or "username" columns.');
+    });
+  });
 });

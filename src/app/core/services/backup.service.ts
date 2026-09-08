@@ -285,4 +285,143 @@ export class BackupService {
 
     return result;
   }
+
+  /**
+   * Parses Google Password Manager exported CSV string into a DecryptedVault structure.
+   */
+  public parseGoogleCsv(csvText: string): DecryptedVault {
+    if (!csvText || typeof csvText !== 'string' || !csvText.trim()) {
+      throw new Error('CSV file is empty.');
+    }
+
+    const rows = this.parseCsvRows(csvText);
+    if (rows.length < 2) {
+      throw new Error('CSV file is empty or contains no credential entries.');
+    }
+
+    const headers = rows[0].map(h => h.trim().toLowerCase());
+    const nameIdx = headers.findIndex(h => h === 'name' || h === 'title');
+    const urlIdx = headers.findIndex(h => h === 'url' || h === 'website');
+    const userIdx = headers.findIndex(h => h === 'username' || h === 'user' || h === 'login' || h === 'email');
+    const passIdx = headers.findIndex(h => h === 'password' || h === 'pass');
+    const noteIdx = headers.findIndex(h => h === 'note' || h === 'notes');
+
+    if (passIdx === -1 && userIdx === -1) {
+      throw new Error('Invalid CSV format: Missing "password" or "username" columns. Expected Google Password Manager CSV format.');
+    }
+
+    const now = new Date().toISOString();
+    const entries: VaultEntry[] = [];
+
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row || row.length === 0 || (row.length === 1 && !row[0].trim())) {
+        continue;
+      }
+
+      const titleRaw = (nameIdx !== -1 && row[nameIdx] ? row[nameIdx] : '').trim();
+      const url = (urlIdx !== -1 && row[urlIdx] ? row[urlIdx] : '').trim();
+      const username = (userIdx !== -1 && row[userIdx] ? row[userIdx] : '').trim();
+      const password = (passIdx !== -1 && row[passIdx] ? row[passIdx] : '');
+      const notes = (noteIdx !== -1 && row[noteIdx] ? row[noteIdx] : '').trim();
+
+      if (!titleRaw && !url && !username && !password) {
+        continue;
+      }
+
+      let title = titleRaw;
+      if (!title && url) {
+        try {
+          const parsedUrl = new URL(url.startsWith('http') ? url : `https://${url}`);
+          title = parsedUrl.hostname.replace(/^www\./, '');
+        } catch {
+          title = url;
+        }
+      }
+
+      if (!title) {
+        title = username ? `Account (${username})` : 'Imported Credential';
+      }
+
+      entries.push({
+        id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'entry-' + Math.random().toString(36).substring(2, 11),
+        category: 'login',
+        title,
+        website: url,
+        username,
+        password,
+        notes,
+        favorite: false,
+        createdAt: now,
+        updatedAt: now
+      });
+    }
+
+    if (entries.length === 0) {
+      throw new Error('No valid password records found in CSV file.');
+    }
+
+    return {
+      schemaVersion: 1,
+      vaultId: 'import-csv-' + Date.now().toString(36),
+      vaultName: 'Google Passwords Import',
+      revision: 1,
+      createdAt: now,
+      updatedAt: now,
+      categories: ['login', 'secure_note', 'credit_card', 'identity', 'server'],
+      entries
+    };
+  }
+
+  /**
+   * RFC 4180 compliant CSV parser.
+   * Correctly handles quoted fields, internal commas, quotes escaped as double-quotes (""), and embedded line breaks.
+   */
+  public parseCsvRows(text: string): string[][] {
+    const rows: string[][] = [];
+    let currentRow: string[] = [];
+    let currentField = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const nextChar = text[i + 1];
+
+      if (inQuotes) {
+        if (char === '"') {
+          if (nextChar === '"') {
+            currentField += '"';
+            i++;
+          } else {
+            inQuotes = false;
+          }
+        } else {
+          currentField += char;
+        }
+      } else {
+        if (char === '"') {
+          inQuotes = true;
+        } else if (char === ',') {
+          currentRow.push(currentField);
+          currentField = '';
+        } else if (char === '\r') {
+          // Ignore CR
+        } else if (char === '\n') {
+          currentRow.push(currentField);
+          currentField = '';
+          rows.push(currentRow);
+          currentRow = [];
+        } else {
+          currentField += char;
+        }
+      }
+    }
+
+    if (currentField || currentRow.length > 0) {
+      currentRow.push(currentField);
+      rows.push(currentRow);
+    }
+
+    return rows;
+  }
 }

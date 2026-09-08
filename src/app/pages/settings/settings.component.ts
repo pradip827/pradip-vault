@@ -413,12 +413,12 @@ import { DecryptedVault } from '../../core/models/vault.model';
         <div class="modal-content-box">
           @if (importStep() === 'select_file') {
             <div class="dropzone" (click)="fileInput.click()">
-              <input #fileInput type="file" accept=".zerovault,.pradipvault,.json" (change)="onFileSelected($event)" style="display: none" id="backup-file-input" />
+              <input #fileInput type="file" accept=".zerovault,.pradipvault,.json,.csv" (change)="onFileSelected($event)" style="display: none" id="backup-file-input" />
               <div class="dropzone-icon">
                 <app-icon name="upload" [size]="32" />
               </div>
-              <h4>Select .zerovault file</h4>
-              <p>Click to browse or choose your encrypted backup file</p>
+              <h4>Select backup or CSV file</h4>
+              <p>Choose a .zerovault file or Google Password Manager .csv file</p>
             </div>
 
             @if (importError()) {
@@ -467,8 +467,8 @@ import { DecryptedVault } from '../../core/models/vault.model';
               <div class="preview-header">
                 <app-icon name="check" [size]="20" />
                 <div>
-                  <h4>Backup Decrypted Successfully</h4>
-                  <p>Found <strong>{{ decryptedImportVault()?.entries?.length || 0 }} credentials</strong> from "{{ decryptedImportVault()?.vaultName }}".</p>
+                  <h4>{{ isCsvImport() ? 'Google Passwords Ready' : 'Backup Decrypted Successfully' }}</h4>
+                  <p>Found <strong>{{ decryptedImportVault()?.entries?.length || 0 }} credentials</strong> ready to import.</p>
                 </div>
               </div>
 
@@ -1103,6 +1103,7 @@ export class SettingsComponent {
   public readonly importStrategy = signal<'merge' | 'overwrite'>('merge');
   public readonly isImportBusy = signal<boolean>(false);
   public readonly importError = signal<string>('');
+  public readonly isCsvImport = signal<boolean>(false);
 
   public handleTimeoutChange(event: Event): void {
     const val = parseInt((event.target as HTMLSelectElement).value, 10);
@@ -1220,6 +1221,7 @@ export class SettingsComponent {
     this.importStrategy.set('merge');
     this.isImportBusy.set(false);
     this.importError.set('');
+    this.isCsvImport.set(false);
   }
 
   public onFileSelected(event: Event): void {
@@ -1230,15 +1232,29 @@ export class SettingsComponent {
     this.importFileName.set(file.name);
     this.importError.set('');
 
+    const isCsv = file.name.toLowerCase().endsWith('.csv');
+    this.isCsvImport.set(isCsv);
+
     const reader = new FileReader();
     reader.onload = async () => {
       try {
         const text = reader.result as string;
+
+        if (isCsv) {
+          if (this.vaultService.isLocked()) {
+            throw new Error('Please unlock your vault before importing passwords from a CSV file.');
+          }
+          const csvVault = this.backupService.parseGoogleCsv(text);
+          this.decryptedImportVault.set(csvVault);
+          this.importStep.set('preview_and_apply');
+          return;
+        }
+
         const parsed = await this.backupService.parseBackupFile(text);
         this.parsedBackup.set(parsed);
         this.importStep.set('enter_password');
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Invalid backup file.';
+        const msg = err instanceof Error ? err.message : 'Invalid backup or CSV file.';
         this.importError.set(msg);
       }
     };
