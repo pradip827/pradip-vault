@@ -38,8 +38,13 @@ function lockVault() {
 function notifyTabsOfVaultChange() {
   chrome.tabs.query({}, (tabs) => {
     tabs.forEach((tab) => {
-      if (tab.id) {
-        chrome.tabs.sendMessage(tab.id, { type: 'ZEROVAULT_STATE_CHANGED' }).catch(() => {});
+      if (tab.id && tab.url && (tab.url.startsWith('http://') || tab.url.startsWith('https://'))) {
+        chrome.tabs.sendMessage(tab.id, { type: 'ZEROVAULT_STATE_CHANGED' }, () => {
+          // Explicitly inspect chrome.runtime.lastError to suppress "Unchecked runtime.lastError: Receiving end does not exist"
+          if (chrome.runtime.lastError) {
+            // Content script not ready or tab restricted - ignore silently
+          }
+        });
       }
     });
   });
@@ -208,12 +213,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (!password || password.length < 4) {
           throw new Error('Password must be at least 4 characters');
         }
+
+        const pending = await chrome.storage.local.get('pending_web_entries');
+        const initialEntries = (pending && Array.isArray(pending.pending_web_entries)) ? pending.pending_web_entries : [];
+        if (pending?.pending_web_entries) {
+          await chrome.storage.local.remove('pending_web_entries');
+        }
+
         const initialVault = {
           schemaVersion: 1,
           vaultName: 'ZeroVault Extension',
           revision: 1,
           createdAt: new Date().toISOString(),
-          entries: []
+          entries: initialEntries
         };
         const envelope = await encryptPayload(JSON.stringify(initialVault), password);
         await saveStoredEnvelope(envelope);
@@ -234,6 +246,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const decryptedJson = await decryptPayload(envelope, password);
         unlockedVault = JSON.parse(decryptedJson);
         activeMasterPassword = password;
+
+        // Auto-merge any pending web vault entries
+        const pending = await chrome.storage.local.get('pending_web_entries');
+        if (pending && Array.isArray(pending.pending_web_entries) && pending.pending_web_entries.length > 0) {
+          const newEntries = pending.pending_web_entries;
+          await chrome.storage.local.remove('pending_web_entries');
+
+          // Merge by title/website/username
+          newEntries.forEach((ne) => {
+            const exists = unlockedVault.entries.some(
+              (e) => (e.website === ne.website || e.title === ne.title) && e.username === ne.username
+            );
+            if (!exists) {
+              unlockedVault.entries.push(ne);
+            }
+          });
+
+          const reEncrypted = await encryptPayload(JSON.stringify(unlockedVault), password);
+          await saveStoredEnvelope(reEncrypted);
+        }
 
         resetAutoLockTimer();
         notifyTabsOfVaultChange();
@@ -350,6 +382,54 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const envelope = await encryptPayload(JSON.stringify(unlockedVault), activeMasterPassword);
         await saveStoredEnvelope(envelope);
         return { success: true, added, total: unlockedVault.entries.length };
+      }
+
+      case 'SYNC_FROM_WEB_APP': {
+        const { entries } = message;
+        if (!Array.isArray(entries)) {
+          return { success: false, error: 'Invalid entries payload' };
+        }
+
+        const envelope = await loadStoredEnvelope();
+        if (unlockedVault && activeMasterPassword) {
+          let addedCount = 0;
+          entries.forEach((ne) => {
+            const existingIdx = unlockedVault.entries.findIndex(
+              (e) => (e.website === ne.website || e.title === ne.title) && (e.username || '').toLowerCase() === (ne.username || '').toLowerCase()
+            );
+            if (existingIdx !== -1) {
+              unlockedVault.entries[existingIdx].password = ne.password;
+              unlockedVault.entries[existingIdx].updatedAt = ne.updatedAt || new Date().toISOString();
+            } else {
+              unlockedVault.entries.push({
+                id: ne.id || 'web-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 7),
+                category: ne.category || 'login',
+                title: ne.title || 'Account',
+                website: ne.website || '',
+                username: ne.username || '',
+                password: ne.password || '',
+                notes: ne.notes || '',
+                favorite: !!ne.favorite,
+                createdAt: ne.createdAt || new Date().toISOString(),
+                updatedAt: ne.updatedAt || new Date().toISOString()
+              });
+              addedCount++;
+            }
+          });
+          const newEnvelope = await encryptPayload(JSON.stringify(unlockedVault), activeMasterPassword);
+          await saveStoredEnvelope(newEnvelope);
+        } else {
+          await chrome.storage.local.set({ pending_web_entries: entries });
+        }
+
+        notifyTabsOfVaultChange();
+
+        const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (activeTab && activeTab.url) {
+          updateBadgeForTab(activeTab.id, activeTab.url);
+        }
+
+        return { success: true, count: entries.length };
       }
 
       default:

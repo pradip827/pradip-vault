@@ -29,6 +29,7 @@ const sliderGenLen = document.getElementById('slider-gen-len');
 const labelGenLen = document.getElementById('label-gen-len');
 
 // Import Elements
+const btnSyncWebVault = document.getElementById('btn-sync-web-vault');
 const inputCsvImport = document.getElementById('input-csv-import');
 const importStatusMsg = document.getElementById('import-status-msg');
 
@@ -45,6 +46,7 @@ async function init() {
   }
 
   chrome.runtime.sendMessage({ type: 'GET_STATUS' }, (res) => {
+    if (chrome.runtime.lastError) return;
     if (res && res.isUnlocked) {
       showUnlockedView();
     } else {
@@ -88,6 +90,7 @@ function showUnlockedView() {
 
 function loadCredentialsForTab() {
   chrome.runtime.sendMessage({ type: 'GET_MATCHING_LOGINS', url: activeTabUrl }, (res) => {
+    if (chrome.runtime.lastError) return;
     if (!res || !res.isUnlocked) {
       showLockedView();
       return;
@@ -98,6 +101,7 @@ function loadCredentialsForTab() {
 
     // Request all entries for search
     chrome.runtime.sendMessage({ type: 'GET_MATCHING_LOGINS', url: '' }, (allRes) => {
+      if (chrome.runtime.lastError) return;
       allVaultMatches = allRes?.matches || [];
       labelEntryCount.innerText = `${allVaultMatches.length} items`;
       renderAllMatches(allVaultMatches);
@@ -112,7 +116,7 @@ function renderTabMatches(matches, totalEntries) {
       listTabMatches.innerHTML = `
         <div class="empty-state">
           Vault is empty.<br>
-          <span style="color:#3b82f6;">Click "Import Google Passwords" below to load your passwords!</span>
+          <span style="color:#38bdf8;">Click <strong>"📥 Import File"</strong> or <strong>"🔄 Sync from Web Vault"</strong> below to load your passwords!</span>
         </div>
       `;
     } else {
@@ -236,11 +240,19 @@ function setupEvents() {
     unlockError.style.display = 'none';
 
     chrome.runtime.sendMessage({ type: 'UNLOCK_VAULT', password: pwd }, (res) => {
+      if (chrome.runtime.lastError) {
+        showUnlockError(chrome.runtime.lastError.message || 'Connection error');
+        return;
+      }
       if (res && res.success) {
         showUnlockedView();
       } else {
         if (res?.error && res.error.includes('No vault found')) {
           chrome.runtime.sendMessage({ type: 'CREATE_VAULT', password: pwd }, (cRes) => {
+            if (chrome.runtime.lastError) {
+              showUnlockError(chrome.runtime.lastError.message || 'Connection error');
+              return;
+            }
             if (cRes && cRes.success) {
               showUnlockedView();
             } else {
@@ -256,6 +268,7 @@ function setupEvents() {
 
   btnLock.onclick = () => {
     chrome.runtime.sendMessage({ type: 'LOCK_VAULT' }, () => {
+      if (chrome.runtime.lastError) return;
       showLockedView();
     });
   };
@@ -292,6 +305,34 @@ function setupEvents() {
     renderAllMatches(filtered);
   };
 
+  // Sync with Web Vault Handler
+  btnSyncWebVault.onclick = async () => {
+    showImportStatus('Finding open Web Vault tab...', false);
+
+    const tabs = await chrome.tabs.query({});
+    const vaultTab = tabs.find(
+      (t) => t.url && (t.url.includes('pradip-vault.pages.dev') || t.url.includes('localhost'))
+    );
+
+    if (vaultTab && vaultTab.id) {
+      chrome.tabs.sendMessage(vaultTab.id, { type: 'TRIGGER_WEB_SYNC' }, () => {
+        if (chrome.runtime.lastError) {
+          // Tab was open before extension was reloaded; reload tab to bind content script
+          showImportStatus('Connecting to Web Vault tab...', false);
+          chrome.tabs.reload(vaultTab.id);
+          return;
+        }
+        showImportStatus('Sync requested! Updating entries...', false);
+        setTimeout(() => {
+          loadCredentialsForTab();
+        }, 800);
+      });
+    } else {
+      showImportStatus('Opening Web Vault... unlock it to auto-sync!', false);
+      chrome.tabs.create({ url: 'https://pradip-vault.pages.dev' });
+    }
+  };
+
   // CSV / JSON File Import Handler
   inputCsvImport.onchange = (e) => {
     const file = e.target.files?.[0];
@@ -325,6 +366,10 @@ function setupEvents() {
         }
 
         chrome.runtime.sendMessage({ type: 'IMPORT_CREDENTIALS', entries: parsedEntries }, (res) => {
+          if (chrome.runtime.lastError) {
+            showImportStatus(chrome.runtime.lastError.message || 'Import error', true);
+            return;
+          }
           if (res && res.success) {
             showImportStatus(`✓ Imported ${res.added} credentials!`, false);
             loadCredentialsForTab();
@@ -339,6 +384,13 @@ function setupEvents() {
     reader.readAsText(file);
   };
 }
+
+// Auto-reload when background signals state changes
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.type === 'ZEROVAULT_STATE_CHANGED') {
+    loadCredentialsForTab();
+  }
+});
 
 function showImportStatus(msg, isError) {
   importStatusMsg.style.display = 'block';

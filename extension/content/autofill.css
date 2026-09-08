@@ -104,7 +104,7 @@
   z-index: 2147483640 !important;
   opacity: 0.85 !important;
   transition: opacity 0.15s ease, transform 0.15s ease !important;
-  display: none;
+  display: flex !important;
   align-items: center !important;
   justify-content: center !important;
   user-select: none !important;

@@ -31,6 +31,30 @@ export class VaultService {
 
   constructor() {
     this.checkExistingVault();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('message', (event) => {
+        if (event.data?.type === 'ZEROVAULT_REQUEST_SYNC') {
+          const v = this.vault();
+          if (v && !this.isLocked()) {
+            this.broadcastToExtension(v);
+          }
+        }
+      });
+    }
+  }
+
+  private broadcastToExtension(vault: DecryptedVault | null): void {
+    try {
+      if (typeof window !== 'undefined' && vault && Array.isArray(vault.entries)) {
+        window.postMessage({
+          type: 'ZEROVAULT_WEB_VAULT_SYNC',
+          entries: vault.entries,
+          vaultName: vault.vaultName || 'ZeroVault'
+        }, '*');
+      }
+    } catch {
+      // Ignore
+    }
   }
 
   /**
@@ -119,6 +143,7 @@ export class VaultService {
 
       this.vault.set(parsed);
       this.isLocked.set(false);
+      this.broadcastToExtension(parsed);
     } finally {
       this.isBusy.set(false);
       this.busyMessage.set('');
@@ -192,6 +217,7 @@ export class VaultService {
 
       await this.storage.saveVaultEnvelope(envelope, updatedVault.revision);
       this.vault.set(updatedVault);
+      this.broadcastToExtension(updatedVault);
     } finally {
       this.isBusy.set(false);
       this.busyMessage.set('');

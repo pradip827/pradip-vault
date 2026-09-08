@@ -16,10 +16,67 @@
   let activeDropdown = null;
   let draggablePill = null;
   let isPillDismissed = false;
+  let observer = null;
+  let scanDebounceTimer = null;
+  let isContextActive = true;
+
+  function isRuntimeValid() {
+    if (!isContextActive) return false;
+    try {
+      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+        return true;
+      }
+    } catch (e) {}
+    teardownExtension();
+    return false;
+  }
+
+  function teardownExtension() {
+    isContextActive = false;
+    if (observer) {
+      try { observer.disconnect(); } catch (e) {}
+      observer = null;
+    }
+    if (scanDebounceTimer) {
+      clearTimeout(scanDebounceTimer);
+      scanDebounceTimer = null;
+    }
+    if (draggablePill) {
+      try { draggablePill.remove(); } catch (e) {}
+      draggablePill = null;
+    }
+    closeActiveDropdown();
+    try {
+      document.querySelectorAll('.zerovault-input-badge, .zerovault-dropdown, #zerovault-pill-container, #zerovault-save-toast, #zerovault-prompt-toast').forEach((el) => el.remove());
+    } catch (e) {}
+  }
+
+  function safeSendMessage(message, callback) {
+    if (!isRuntimeValid()) return;
+    try {
+      chrome.runtime.sendMessage(message, (res) => {
+        const err = chrome.runtime.lastError;
+        if (err) {
+          const msg = err.message || '';
+          if (msg.includes('Extension context invalidated') || msg.includes('Receiving end does not exist')) {
+            teardownExtension();
+            return;
+          }
+        }
+        if (typeof callback === 'function') {
+          callback(res);
+        }
+      });
+    } catch (err) {
+      if (err?.message?.includes('Extension context invalidated')) {
+        teardownExtension();
+      }
+    }
+  }
 
   function closeActiveDropdown() {
     if (activeDropdown) {
-      activeDropdown.remove();
+      try { activeDropdown.remove(); } catch (e) {}
       activeDropdown = null;
     }
   }
@@ -261,7 +318,8 @@
         return;
       }
 
-      chrome.runtime.sendMessage({ type: 'GET_MATCHING_LOGINS', url: window.location.href }, (res) => {
+      safeSendMessage({ type: 'GET_MATCHING_LOGINS', url: window.location.href }, (res) => {
+        if (!isRuntimeValid()) return;
         const matches = res?.matches || [];
         renderDropdownForPill(pill, matches, res?.isUnlocked, res?.totalEntries || 0);
       });
@@ -294,28 +352,31 @@
       badge.style.left = `${rect.left + window.scrollX + rect.width - 28}px`;
     }
 
-    // Only show badge when input is focused or hovered!
+    // Position badge immediately and bind scroll/resize
+    updateBadgePosition();
+    window.addEventListener('scroll', updateBadgePosition, { passive: true });
+    window.addEventListener('resize', updateBadgePosition, { passive: true });
+
+    // Show suggestions dropdown automatically on input focus
     input.addEventListener('focus', () => {
       updateBadgePosition();
-      badge.classList.add('visible');
-    });
-
-    input.addEventListener('blur', () => {
-      setTimeout(() => {
-        if (!activeDropdown && !isDetached) {
-          badge.classList.remove('visible');
+      safeSendMessage({ type: 'GET_MATCHING_LOGINS', url: window.location.href }, (res) => {
+        if (!isRuntimeValid()) return;
+        if (res?.matches?.length > 0 && !activeDropdown) {
+          renderDropdownForInput(input, badge, res.matches, res.isUnlocked, res.totalEntries || 0);
         }
-      }, 250);
+      });
     });
 
-    input.addEventListener('mouseenter', () => {
+    input.addEventListener('click', () => {
       updateBadgePosition();
-      badge.classList.add('visible');
-    });
-
-    input.addEventListener('mouseleave', () => {
-      if (document.activeElement !== input && !activeDropdown && !isDetached) {
-        badge.classList.remove('visible');
+      if (!activeDropdown) {
+        safeSendMessage({ type: 'GET_MATCHING_LOGINS', url: window.location.href }, (res) => {
+          if (!isRuntimeValid()) return;
+          if (res?.matches?.length > 0 && !activeDropdown) {
+            renderDropdownForInput(input, badge, res.matches, res.isUnlocked, res.totalEntries || 0);
+          }
+        });
       }
     });
 
@@ -376,7 +437,8 @@
 
       if (badgeMoved) return;
 
-      chrome.runtime.sendMessage({ type: 'GET_MATCHING_LOGINS', url: window.location.href }, (res) => {
+      safeSendMessage({ type: 'GET_MATCHING_LOGINS', url: window.location.href }, (res) => {
+        if (!isRuntimeValid()) return;
         renderDropdownForInput(input, badge, res?.matches || [], res?.isUnlocked, res?.totalEntries || 0);
       });
     });
@@ -609,7 +671,7 @@
 
     toast.querySelector('#zv-btn-save').onclick = () => {
       toast.querySelector('#zv-btn-save').innerText = 'Saving...';
-      chrome.runtime.sendMessage(
+      safeSendMessage(
         {
           type: 'SAVE_CREDENTIAL',
           title: hostname,
@@ -671,16 +733,51 @@
 
   // --- External Message Listener (from Popup / Background) ---
 
-  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (msg.type === 'AUTOFILL_CREDENTIAL' && msg.credential) {
-      applyFill(null, msg.credential);
-      sendResponse({ success: true });
+  try {
+    if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
+      chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+        if (!isRuntimeValid()) return;
+        if (msg.type === 'ZEROVAULT_STATE_CHANGED') {
+          triggerScan();
+        } else if (msg.type === 'AUTOFILL_CREDENTIAL' && msg.credential) {
+          applyFill(null, msg.credential);
+          sendResponse({ success: true });
+        } else if (msg.type === 'TRIGGER_WEB_SYNC') {
+          window.postMessage({ type: 'ZEROVAULT_REQUEST_SYNC' }, '*');
+          sendResponse({ success: true });
+        }
+      });
+    }
+  } catch (e) {}
+
+  // --- Web App Live Sync Bridge ---
+  window.addEventListener('message', (event) => {
+    if (!isRuntimeValid()) return;
+    if (event.data?.type === 'ZEROVAULT_WEB_VAULT_SYNC' && Array.isArray(event.data.entries)) {
+      safeSendMessage({
+        type: 'SYNC_FROM_WEB_APP',
+        entries: event.data.entries
+      }, (res) => {
+        if (res?.success) {
+          showPromptToast('ZeroVault Live Sync', `Synced ${res.count} accounts from Web Vault!`);
+        }
+      });
     }
   });
+
+  const isWebVaultDomain = window.location.hostname.includes('pradip-vault.pages.dev') || window.location.hostname === 'localhost';
+  if (isWebVaultDomain) {
+    setTimeout(() => {
+      if (isRuntimeValid()) {
+        window.postMessage({ type: 'ZEROVAULT_REQUEST_SYNC' }, '*');
+      }
+    }, 600);
+  }
 
   // --- Main Scan Routine ---
 
   function scanPage() {
+    if (!isRuntimeValid()) return;
     const { passwordInputs, usernameInputs, hasLogin } = getLoginFields();
 
     // If NOT a login form or auth page, DO NOT show anything
@@ -697,17 +794,27 @@
     usernameInputs.forEach((u) => attachBadgeToInput(u));
 
     // Show moveable assistant pill
-    chrome.runtime.sendMessage({ type: 'GET_MATCHING_LOGINS', url: window.location.href }, (res) => {
+    safeSendMessage({ type: 'GET_MATCHING_LOGINS', url: window.location.href }, (res) => {
+      if (!isRuntimeValid()) return;
       createDraggablePill(res?.matches?.length || 0);
     });
+  }
+
+  function triggerScan() {
+    if (!isRuntimeValid()) return;
+    if (scanDebounceTimer) clearTimeout(scanDebounceTimer);
+    scanDebounceTimer = setTimeout(() => {
+      scanPage();
+    }, 60);
   }
 
   // Initialize
   scanPage();
   interceptFormSubmissions();
 
-  const observer = new MutationObserver(() => {
-    scanPage();
+  observer = new MutationObserver(() => {
+    if (!isRuntimeValid()) return;
+    triggerScan();
   });
   observer.observe(document.body || document.documentElement, {
     childList: true,
