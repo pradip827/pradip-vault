@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZeroVault</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-shell">
+    <!-- Header -->
+    <header class="popup-header">
+      <div class="header-brand">
+        <img src="../icons/icon-32.png" alt="ZeroVault" class="brand-icon" />
+        <span class="brand-title">ZeroVault</span>
+      </div>
+      <div class="header-actions">
+        <span id="badge-status" class="badge badge-locked">Locked</span>
+        <button id="btn-lock" class="icon-btn" title="Lock Vault" style="display: none;">
+          🔒
+        </button>
+      </div>
+    </header>
+
+    <!-- Main View Containers -->
+
+    <!-- 1. Unlock Screen -->
+    <div id="view-locked" class="view-panel">
+      <div class="lock-graphic">
+        <img src="../icons/icon-48.png" alt="Lock" />
+      </div>
+      <h3>Vault is Locked</h3>
+      <p class="subtitle">Enter your master password to unlock autofill.</p>
+
+      <form id="form-unlock" class="auth-form">
+        <div class="input-group">
+          <input type="password" id="input-password" placeholder="Enter Master Password" required autofocus />
+        </div>
+        <button type="submit" id="btn-unlock" class="btn btn-primary btn-full">
+          Unlock Vault
+        </button>
+        <div id="unlock-error" class="error-msg" style="display: none;"></div>
+      </form>
+
+      <div class="web-link-row">
+        <a href="https://pradip-vault.pages.dev" target="_blank" class="text-link">Open Web Vault ↗</a>
+      </div>
+    </div>
+
+    <!-- 2. Unlocked Screen -->
+    <div id="view-unlocked" class="view-panel" style="display: none;">
+      <!-- Active Tab Section -->
+      <section class="section-card">
+        <div class="section-head">
+          <span class="section-label">Current Tab</span>
+          <span id="label-current-domain" class="domain-tag">...</span>
+        </div>
+        <div id="list-tab-matches" class="credentials-list">
+          <div class="empty-state">No matching credentials for this site.</div>
+        </div>
+      </section>
+
+      <!-- Password Generator Collapsible -->
+      <section class="section-card">
+        <div class="generator-head" id="btn-toggle-gen">
+          <span>⚡ Password Generator</span>
+          <span id="gen-arrow">▼</span>
+        </div>
+        <div id="generator-body" class="generator-body" style="display: none;">
+          <div class="gen-output-row">
+            <input type="text" id="gen-password-output" readonly />
+            <button id="btn-gen-refresh" class="icon-btn" title="Generate New">🔄</button>
+            <button id="btn-gen-copy" class="btn btn-primary btn-sm">Copy</button>
+          </div>
+          <div class="gen-slider-row">
+            <label>Length: <span id="label-gen-len">20</span></label>
+            <input type="range" id="slider-gen-len" min="8" max="40" value="20" />
+          </div>
+        </div>
+      </section>
+
+      <!-- Vault Search & All Items -->
+      <section class="section-card">
+        <div class="search-wrap">
+          <input type="text" id="input-search" placeholder="Search all saved credentials..." />
+        </div>
+        <div id="list-all-matches" class="credentials-list max-h">
+          <!-- Populated by JS -->
+        </div>
+      </section>
+
+      <!-- Import Banner for Fast Onboarding -->
+      <div class="import-action-bar">
+        <label for="input-csv-import" class="btn btn-secondary btn-full btn-sm" style="cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+          📥 Import Passwords (.csv / .json)
+        </label>
+        <input type="file" id="input-csv-import" accept=".csv,.json" style="display: none;" />
+        <div id="import-status-msg" style="display: none; font-size: 11px; text-align: center; margin-top: 6px; color: #10b981;"></div>
+      </div>
+
+      <!-- Footer -->
+      <footer class="popup-footer">
+        <span id="label-entry-count" class="footer-count">0 items</span>
+        <a href="https://pradip-vault.pages.dev" target="_blank" class="text-link">Web Vault ↗</a>
+      </footer>
+    </div>
+  </div>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

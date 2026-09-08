@@ -185,6 +185,11 @@ import { DecryptedVault } from '../../core/models/vault.model';
               <span class="action-label">
                 Status: <strong>{{ syncService.isConnected() ? 'Connected' : 'Disconnected' }}</strong>
               </span>
+              @if (syncService.isEnvConfigured() && !syncService.isConnected()) {
+                <span class="env-badge" title="Loaded from Cloudflare Pages environment">
+                  ✓ Cloudflare Environment
+                </span>
+              }
             </div>
 
             <div class="buttons-group">
@@ -546,6 +551,13 @@ import { DecryptedVault } from '../../core/models/vault.model';
             </div>
           </div>
 
+          @if (syncService.isEnvConfigured()) {
+            <div class="env-info-box">
+              <app-icon name="check" [size]="16" />
+              <span>Loaded automatically from Cloudflare Pages environment variable <code>GOOGLE_CLIENT_ID</code>. You can override it below if desired.</span>
+            </div>
+          }
+
           <app-input
             label="Google OAuth 2.0 Client ID"
             placeholder="e.g. 1234567890-abcdef.apps.googleusercontent.com"
@@ -556,11 +568,17 @@ import { DecryptedVault } from '../../core/models/vault.model';
           />
 
           <p class="toggle-hint">
-            Create a "Web application" OAuth Client ID in Google Cloud Console with authorized JavaScript origins set to your domain.
+            Set in Cloudflare Pages Environment Variables (<code>GOOGLE_CLIENT_ID</code>) or create an OAuth Client ID in Google Cloud Console.
           </p>
         </div>
 
         <div footer>
+          @if (syncService.googleClientId()) {
+            <app-button variant="outline" (clicked)="copySetupLink()" title="Copy setup link with client ID">
+              <app-icon name="copy" [size]="14" />
+              Copy Setup Link
+            </app-button>
+          }
           <app-button variant="secondary" (clicked)="isDriveConfigOpen.set(false)">Cancel</app-button>
           <app-button variant="primary" (clicked)="saveDriveConfig()" id="btn-save-drive-config">
             Save Configuration
@@ -1076,6 +1094,33 @@ import { DecryptedVault } from '../../core/models/vault.model';
       font-size: 0.8125rem;
       color: var(--text-secondary);
     }
+
+    .env-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.2rem 0.5rem;
+      background: rgba(59, 130, 246, 0.15);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 9999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: #60a5fa;
+      margin-left: 0.5rem;
+    }
+
+    .env-info-box {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.6rem 0.85rem;
+      background: rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.25);
+      border-radius: var(--radius-md);
+      font-size: 0.8rem;
+      color: #93c5fd;
+      line-height: 1.4;
+    }
   `]
 })
 export class SettingsComponent {
@@ -1142,6 +1187,17 @@ export class SettingsComponent {
     await this.syncService.setGoogleClientId(id);
     this.isDriveConfigOpen.set(false);
     this.toast.success('Google Client ID saved.');
+  }
+
+  public copySetupLink(): void {
+    const cid = this.syncService.googleClientId();
+    if (!cid) return;
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const link = `${origin}/?google_client_id=${encodeURIComponent(cid)}`;
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(link);
+      this.toast.success('Setup link copied to clipboard!');
+    }
   }
 
   public async handleDriveConnect(): Promise<void> {

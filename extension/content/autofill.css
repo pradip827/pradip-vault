@@ -1,0 +1,305 @@
+/**
+ * ZeroVault In-Page Autofill & Moveable Assistant Styles
+ */
+
+/* 1. Draggable Floating Assistant Pill */
+.zerovault-float-pill {
+  position: fixed !important;
+  z-index: 2147483645 !important;
+  bottom: 24px !important;
+  right: 24px !important;
+  background: rgba(14, 20, 36, 0.95) !important;
+  border: 1px solid rgba(59, 130, 246, 0.45) !important;
+  border-radius: 9999px !important;
+  padding: 6px 14px 6px 10px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.65), 0 0 18px rgba(59, 130, 246, 0.3) !important;
+  backdrop-filter: blur(14px) !important;
+  cursor: grab !important;
+  user-select: none !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-size: 12px !important;
+  color: #f8fafc !important;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease, transform 0.15s ease !important;
+}
+
+.zerovault-float-pill.is-dragging,
+.zerovault-float-pill:active {
+  cursor: grabbing !important;
+  transform: scale(1.04) !important;
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.8), 0 0 26px rgba(59, 130, 246, 0.5) !important;
+}
+
+.zerovault-float-pill:hover {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.7), 0 0 24px rgba(59, 130, 246, 0.4) !important;
+}
+
+.zerovault-pill-handle {
+  font-size: 13px !important;
+  color: #64748b !important;
+  cursor: grab !important;
+  letter-spacing: -1px !important;
+  line-height: 1 !important;
+  padding-right: 2px !important;
+}
+
+.zerovault-pill-handle:hover {
+  color: #94a3b8 !important;
+}
+
+.zerovault-pill-logo {
+  width: 18px !important;
+  height: 18px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  pointer-events: none !important;
+}
+
+.zerovault-pill-logo svg {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.zerovault-pill-label {
+  font-weight: 600 !important;
+  color: #f8fafc !important;
+  cursor: pointer !important;
+}
+
+.zerovault-pill-count {
+  background: #3b82f6 !important;
+  color: #ffffff !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  padding: 1px 6px !important;
+  border-radius: 9999px !important;
+}
+
+.zerovault-pill-close {
+  background: none !important;
+  border: none !important;
+  color: #94a3b8 !important;
+  font-size: 15px !important;
+  cursor: pointer !important;
+  padding: 0 2px !important;
+  line-height: 1 !important;
+  margin-left: 2px !important;
+  transition: color 0.15s ease !important;
+}
+
+.zerovault-pill-close:hover {
+  color: #f8fafc !important;
+}
+
+/* 2. In-Field Moveable Lock Badge */
+.zerovault-input-badge {
+  position: absolute !important;
+  width: 22px !important;
+  height: 22px !important;
+  cursor: grab !important;
+  z-index: 2147483640 !important;
+  opacity: 0.85 !important;
+  transition: opacity 0.15s ease, transform 0.15s ease !important;
+  display: none;
+  align-items: center !important;
+  justify-content: center !important;
+  user-select: none !important;
+  pointer-events: auto !important;
+}
+
+.zerovault-input-badge:active {
+  cursor: grabbing !important;
+  transform: scale(1.2) !important;
+}
+
+.zerovault-input-badge.visible {
+  display: flex !important;
+}
+
+.zerovault-input-badge:hover {
+  opacity: 1 !important;
+  transform: scale(1.15) !important;
+  filter: drop-shadow(0 0 10px rgba(59, 130, 246, 0.8)) !important;
+}
+
+.zerovault-input-badge svg {
+  width: 100% !important;
+  height: 100% !important;
+  pointer-events: none !important;
+}
+
+/* 3. Autofill Accounts Dropdown */
+.zerovault-dropdown {
+  position: absolute !important;
+  z-index: 2147483646 !important;
+  background: #0e1424 !important;
+  color: #f8fafc !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75), 0 0 22px rgba(59, 130, 246, 0.25) !important;
+  backdrop-filter: blur(16px) !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-size: 13px !important;
+  min-width: 240px !important;
+  max-width: 320px !important;
+  overflow: hidden !important;
+  animation: zvFadeIn 0.15s ease-out !important;
+}
+
+@keyframes zvFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.zerovault-dropdown-header {
+  padding: 8px 12px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: #94a3b8 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+}
+
+.zerovault-dropdown-item {
+  padding: 10px 12px !important;
+  cursor: pointer !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+  transition: background 0.12s ease !important;
+}
+
+.zerovault-dropdown-item:hover {
+  background: rgba(59, 130, 246, 0.18) !important;
+}
+
+.zerovault-dropdown-item:last-child {
+  border-bottom: none !important;
+}
+
+.zerovault-item-user {
+  font-weight: 600 !important;
+  color: #f8fafc !important;
+}
+
+.zerovault-item-title {
+  font-size: 11px !important;
+  color: #94a3b8 !important;
+}
+
+.zerovault-dropdown-empty {
+  padding: 14px 12px !important;
+  color: #94a3b8 !important;
+  text-align: center !important;
+  font-size: 12px !important;
+  line-height: 1.4 !important;
+}
+
+/* 4. Autosave Floating Banner Prompt */
+.zerovault-autosave-toast {
+  position: fixed !important;
+  top: 20px !important;
+  right: 20px !important;
+  z-index: 2147483647 !important;
+  background: #0e1424 !important;
+  color: #f8fafc !important;
+  border: 1px solid rgba(59, 130, 246, 0.35) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.75), 0 0 24px rgba(59, 130, 246, 0.25) !important;
+  backdrop-filter: blur(20px) !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  width: 320px !important;
+  padding: 16px !important;
+  animation: zvSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+@keyframes zvSlideIn {
+  from { opacity: 0; transform: translateX(40px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.zerovault-toast-head {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  margin-bottom: 10px !important;
+}
+
+.zerovault-toast-logo {
+  width: 26px !important;
+  height: 26px !important;
+  flex-shrink: 0 !important;
+}
+
+.zerovault-toast-title {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  color: #f8fafc !important;
+  flex: 1 !important;
+}
+
+.zerovault-toast-close {
+  background: none !important;
+  border: none !important;
+  color: #94a3b8 !important;
+  cursor: pointer !important;
+  font-size: 18px !important;
+  padding: 2px !important;
+  line-height: 1 !important;
+}
+
+.zerovault-toast-close:hover {
+  color: #f8fafc !important;
+}
+
+.zerovault-toast-body {
+  font-size: 12px !important;
+  color: #94a3b8 !important;
+  margin-bottom: 14px !important;
+  line-height: 1.4 !important;
+}
+
+.zerovault-toast-actions {
+  display: flex !important;
+  gap: 8px !important;
+}
+
+.zerovault-btn {
+  flex: 1 !important;
+  padding: 8px 12px !important;
+  border-radius: 6px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  border: none !important;
+  text-align: center !important;
+  transition: background 0.15s ease !important;
+}
+
+.zerovault-btn-primary {
+  background: #3b82f6 !important;
+  color: #ffffff !important;
+}
+
+.zerovault-btn-primary:hover {
+  background: #2563eb !important;
+}
+
+.zerovault-btn-secondary {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #cbd5e1 !important;
+}
+
+.zerovault-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.14) !important;
+}

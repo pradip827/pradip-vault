@@ -36,6 +36,7 @@ export class SyncService {
   public readonly syncStatus = signal<'idle' | 'syncing' | 'synced' | 'error'>('idle');
   public readonly syncError = signal<string | null>(null);
   public readonly googleClientId = signal<string>('');
+  public readonly isEnvConfigured = signal<boolean>(false);
 
   constructor() {
     this.initSyncState();
@@ -53,6 +54,54 @@ export class SyncService {
     } catch {
       // Ignore initial storage read restrictions
     }
+
+    // Check for query parameter in URL (e.g. ?google_client_id=... or ?client_id=...)
+    try {
+      if (typeof window !== 'undefined' && window.location && window.location.search) {
+        const urlParams = new URLSearchParams(window.location.search);
+        const queryClientId = urlParams.get('google_client_id') || urlParams.get('client_id');
+        if (queryClientId && queryClientId.trim()) {
+          const trimmed = queryClientId.trim();
+          await this.setGoogleClientId(trimmed);
+          this.toast.success('Google Client ID configured from link.');
+          const cleanUrl = window.location.pathname + window.location.hash;
+          window.history.replaceState({}, document.title, cleanUrl);
+          return;
+        }
+      }
+    } catch {
+      // Ignore in non-browser/test contexts
+    }
+
+    // If no client ID set locally, fetch from Cloudflare Pages Function (/api/config)
+    if (!this.googleClientId()) {
+      await this.fetchRemoteConfig();
+    }
+  }
+
+  /**
+   * Fetches the Cloudflare Pages environment configuration.
+   */
+  public async fetchRemoteConfig(): Promise<void> {
+    try {
+      if (typeof fetch === 'undefined') return;
+      const res = await fetch('/api/config', { cache: 'no-store' });
+      if (res.ok) {
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const data = await res.json();
+          if (data && data.googleClientId && typeof data.googleClientId === 'string') {
+            const trimmed = data.googleClientId.trim();
+            if (trimmed) {
+              this.googleClientId.set(trimmed);
+              this.isEnvConfigured.set(true);
+            }
+          }
+        }
+      }
+    } catch {
+      // Gracefully ignore network errors or offline
+    }
   }
 
   /**
@@ -61,6 +110,9 @@ export class SyncService {
   public async setGoogleClientId(clientId: string): Promise<void> {
     const trimmed = clientId.trim();
     this.googleClientId.set(trimmed);
+    if (!trimmed) {
+      this.isEnvConfigured.set(false);
+    }
     await this.storage.saveSyncMetadata({ googleClientId: trimmed });
   }
 
