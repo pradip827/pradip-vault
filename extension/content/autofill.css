@@ -3,47 +3,66 @@
  */
 
 /* 1. Draggable Floating Assistant Pill */
+.zerovault-float-pill,
+.zerovault-float-pill * {
+  all: unset !important;
+  box-sizing: border-box !important;
+}
+
 .zerovault-float-pill {
   position: fixed !important;
   z-index: 2147483645 !important;
   bottom: 24px !important;
   right: 24px !important;
-  background: rgba(14, 20, 36, 0.95) !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: 220px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  max-height: 34px !important;
+  background: #0e1424 !important;
   border: 1px solid rgba(59, 130, 246, 0.45) !important;
-  border-radius: 9999px !important;
-  padding: 6px 14px 6px 10px !important;
-  display: flex !important;
+  border-radius: 17px !important;
+  padding: 0 10px 0 8px !important;
+  display: inline-flex !important;
+  flex-direction: row !important;
   align-items: center !important;
+  justify-content: flex-start !important;
   gap: 8px !important;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.65), 0 0 18px rgba(59, 130, 246, 0.3) !important;
-  backdrop-filter: blur(14px) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 14px rgba(59, 130, 246, 0.3) !important;
   cursor: grab !important;
   user-select: none !important;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
   font-size: 12px !important;
   color: #f8fafc !important;
+  margin: 0 !important;
+  line-height: 1 !important;
+  overflow: hidden !important;
+  white-space: nowrap !important;
   transition: box-shadow 0.15s ease, border-color 0.15s ease, transform 0.15s ease !important;
 }
 
 .zerovault-float-pill.is-dragging,
 .zerovault-float-pill:active {
   cursor: grabbing !important;
-  transform: scale(1.04) !important;
-  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.8), 0 0 26px rgba(59, 130, 246, 0.5) !important;
+  transform: scale(1.03) !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7), 0 0 20px rgba(59, 130, 246, 0.5) !important;
 }
 
 .zerovault-float-pill:hover {
   border-color: #3b82f6 !important;
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.7), 0 0 24px rgba(59, 130, 246, 0.4) !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6), 0 0 18px rgba(59, 130, 246, 0.4) !important;
 }
 
 .zerovault-pill-handle {
+  display: inline-flex !important;
+  align-items: center !important;
   font-size: 13px !important;
   color: #64748b !important;
   cursor: grab !important;
-  letter-spacing: -1px !important;
-  line-height: 1 !important;
   padding-right: 2px !important;
+  line-height: 1 !important;
+  user-select: none !important;
 }
 
 .zerovault-pill-handle:hover {
@@ -51,35 +70,51 @@
 }
 
 .zerovault-pill-logo {
-  width: 18px !important;
-  height: 18px !important;
-  display: flex !important;
+  display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
+  width: 18px !important;
+  min-width: 18px !important;
+  max-width: 18px !important;
+  height: 18px !important;
+  min-height: 18px !important;
+  max-height: 18px !important;
   pointer-events: none !important;
 }
 
 .zerovault-pill-logo svg {
-  width: 100% !important;
-  height: 100% !important;
+  width: 18px !important;
+  height: 18px !important;
+  display: block !important;
 }
 
 .zerovault-pill-label {
+  display: inline-block !important;
   font-weight: 600 !important;
+  font-size: 12px !important;
   color: #f8fafc !important;
   cursor: pointer !important;
+  line-height: 1 !important;
 }
 
 .zerovault-pill-count {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   background: #3b82f6 !important;
   color: #ffffff !important;
   font-size: 10px !important;
   font-weight: 700 !important;
   padding: 1px 6px !important;
   border-radius: 9999px !important;
+  line-height: 1 !important;
+  height: 16px !important;
 }
 
 .zerovault-pill-close {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   background: none !important;
   border: none !important;
   color: #94a3b8 !important;
@@ -88,7 +123,6 @@
   padding: 0 2px !important;
   line-height: 1 !important;
   margin-left: 2px !important;
-  transition: color 0.15s ease !important;
 }
 
 .zerovault-pill-close:hover {

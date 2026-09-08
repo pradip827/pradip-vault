@@ -4,7 +4,7 @@
 
 (function () {
   const ZEROVAULT_SVG = `
-    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg width="18" height="18" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
       <circle cx="24" cy="24" r="22" fill="#070a12" stroke="#3b82f6" stroke-width="2"/>
       <path d="M16 22V17C16 12.58 19.58 9 24 9C28.42 9 32 12.58 32 17V22" stroke="#38bdf8" stroke-width="3" stroke-linecap="round"/>
       <rect x="12" y="22" width="24" height="18" rx="5" fill="#0e1424" stroke="#3b82f6" stroke-width="2"/>
@@ -123,18 +123,16 @@
 
   function isAuthPageUrl() {
     const href = window.location.href.toLowerCase();
-    const hostname = window.location.hostname.toLowerCase();
+    const pathname = window.location.pathname.toLowerCase();
     return (
-      href.includes('/login') ||
-      href.includes('/signin') ||
-      href.includes('/sign-in') ||
-      href.includes('/auth') ||
-      href.includes('/session') ||
-      href.includes('/identifier') ||
-      hostname.includes('accounts.google.com') ||
-      hostname.includes('login.microsoftonline.com') ||
-      hostname.includes('appleid.apple.com') ||
-      hostname.includes('auth.')
+      pathname.includes('/login') ||
+      pathname.includes('/signin') ||
+      pathname.includes('/sign-in') ||
+      pathname === '/auth' ||
+      pathname.startsWith('/auth/login') ||
+      pathname.startsWith('/auth/signin') ||
+      href.includes('/session/new') ||
+      href.includes('/identifier')
     );
   }
 
@@ -328,34 +326,83 @@
 
   // --- Moveable In-Field Lock Badge ---
 
+  // --- In-Field Badges Lifecycle ---
+  const attachedBadges = new Map();
+
+  function removeAllBadges() {
+    for (const [input, badge] of attachedBadges.entries()) {
+      try { badge.remove(); } catch (e) {}
+      try { delete input.dataset.zerovaultAttached; } catch (e) {}
+    }
+    attachedBadges.clear();
+    try {
+      document.querySelectorAll('.zerovault-input-badge, .zerovault-dropdown').forEach((el) => el.remove());
+    } catch (e) {}
+  }
+
+  function cleanupOrphanedBadges(validInputs) {
+    const validSet = new Set(validInputs);
+    for (const [input, badge] of attachedBadges.entries()) {
+      if (!validSet.has(input) || !input.isConnected || input.offsetParent === null) {
+        try { badge.remove(); } catch (e) {}
+        try { delete input.dataset.zerovaultAttached; } catch (e) {}
+        attachedBadges.delete(input);
+      }
+    }
+  }
+
+  function updateAllBadgePositions() {
+    for (const [input, badge] of attachedBadges.entries()) {
+      if (!input.isConnected || input.offsetParent === null) {
+        try { badge.remove(); } catch (e) {}
+        try { delete input.dataset.zerovaultAttached; } catch (e) {}
+        attachedBadges.delete(input);
+      } else {
+        const rect = input.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) {
+          badge.style.display = 'none';
+        } else {
+          badge.style.display = 'flex';
+          badge.style.top = `${rect.top + window.scrollY + (rect.height / 2) - 10}px`;
+          badge.style.left = `${rect.left + window.scrollX + rect.width - 26}px`;
+        }
+      }
+    }
+  }
+
+  window.addEventListener('scroll', updateAllBadgePositions, { passive: true });
+  window.addEventListener('resize', updateAllBadgePositions, { passive: true });
+
   function attachBadgeToInput(input) {
-    if (input.dataset.zerovaultAttached) return;
-    input.dataset.zerovaultAttached = 'true';
+    if (attachedBadges.has(input)) {
+      const existing = attachedBadges.get(input);
+      if (existing && existing.isConnected) return;
+    }
 
     const badge = document.createElement('div');
     badge.className = 'zerovault-input-badge';
     badge.innerHTML = ZEROVAULT_SVG;
-    badge.title = 'ZeroVault Autofill (Drag to move)';
+    badge.title = 'ZeroVault Autofill';
     document.body.appendChild(badge);
-
-    let isDetached = false;
-    let badgeMoved = false;
+    attachedBadges.set(input, badge);
 
     function updateBadgePosition() {
-      if (isDetached) return;
-      const rect = input.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) {
-        badge.classList.remove('visible');
+      if (!input.isConnected || input.offsetParent === null) {
+        try { badge.remove(); } catch (e) {}
+        attachedBadges.delete(input);
         return;
       }
-      badge.style.top = `${rect.top + window.scrollY + (rect.height / 2) - 11}px`;
-      badge.style.left = `${rect.left + window.scrollX + rect.width - 28}px`;
+      const rect = input.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) {
+        badge.style.display = 'none';
+        return;
+      }
+      badge.style.display = 'flex';
+      badge.style.top = `${rect.top + window.scrollY + (rect.height / 2) - 10}px`;
+      badge.style.left = `${rect.left + window.scrollX + rect.width - 26}px`;
     }
 
-    // Position badge immediately and bind scroll/resize
     updateBadgePosition();
-    window.addEventListener('scroll', updateBadgePosition, { passive: true });
-    window.addEventListener('resize', updateBadgePosition, { passive: true });
 
     // Show suggestions dropdown automatically on input focus
     input.addEventListener('focus', () => {
@@ -380,63 +427,10 @@
       }
     });
 
-    // Make badge moveable / draggable
-    let isBadgeDragging = false;
-    let bStartX = 0;
-    let bStartY = 0;
-    let bInitLeft = 0;
-    let bInitTop = 0;
-
-    badge.addEventListener('mousedown', (e) => {
-      isBadgeDragging = true;
-      badgeMoved = false;
-      bStartX = e.clientX;
-      bStartY = e.clientY;
-
-      const rect = badge.getBoundingClientRect();
-      bInitLeft = rect.left + window.scrollX;
-      bInitTop = rect.top + window.scrollY;
-
-      badge.style.left = `${bInitLeft}px`;
-      badge.style.top = `${bInitTop}px`;
-      e.preventDefault();
-      e.stopPropagation();
-    });
-
-    document.addEventListener('mousemove', (e) => {
-      if (!isBadgeDragging) return;
-      const dx = e.clientX - bStartX;
-      const dy = e.clientY - bStartY;
-
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-        badgeMoved = true;
-        isDetached = true;
-      }
-
-      badge.style.left = `${bInitLeft + dx}px`;
-      badge.style.top = `${bInitTop + dy}px`;
-    });
-
-    document.addEventListener('mouseup', () => {
-      if (isBadgeDragging) {
-        isBadgeDragging = false;
-      }
-    });
-
-    // Double-click badge to reset position back to input
-    badge.addEventListener('dblclick', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      isDetached = false;
-      updateBadgePosition();
-    });
-
     badge.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-
-      if (badgeMoved) return;
-
+      input.focus();
       safeSendMessage({ type: 'GET_MATCHING_LOGINS', url: window.location.href }, (res) => {
         if (!isRuntimeValid()) return;
         renderDropdownForInput(input, badge, res?.matches || [], res?.isUnlocked, res?.totalEntries || 0);
@@ -588,6 +582,19 @@
 
   // --- Autosave Engine ---
 
+  let lastCapturedUsername = '';
+
+  document.addEventListener('input', (e) => {
+    const el = e.target;
+    if (el && el instanceof HTMLInputElement) {
+      const type = (el.type || '').toLowerCase();
+      const val = (el.value || '').trim();
+      if ((type === 'email' || type === 'text') && (val.includes('@') || val.length >= 3)) {
+        lastCapturedUsername = val;
+      }
+    }
+  }, true);
+
   function interceptFormSubmissions() {
     document.addEventListener(
       'submit',
@@ -599,7 +606,7 @@
         if (passwordInputs.length === 0) return;
 
         const password = passwordInputs[0].value;
-        const username = usernameInputs[0] ? usernameInputs[0].value : '';
+        const username = usernameInputs[0] ? usernameInputs[0].value : lastCapturedUsername;
 
         if (password && password.length >= 2) {
           handleCapturedLogin(username, password);
@@ -621,13 +628,15 @@
           btnText.includes('register') ||
           btnText.includes('continue') ||
           btnText.includes('submit') ||
+          btnText.includes('proceed') ||
           btnText.includes('next');
 
         if (isLoginAction) {
           setTimeout(() => {
             const { passwordInputs, usernameInputs } = getLoginFields();
             if (passwordInputs.length > 0 && passwordInputs[0].value) {
-              handleCapturedLogin(usernameInputs[0] ? usernameInputs[0].value : '', passwordInputs[0].value);
+              const u = usernameInputs[0] ? usernameInputs[0].value : lastCapturedUsername;
+              handleCapturedLogin(u, passwordInputs[0].value);
             }
           }, 150);
         }
@@ -637,12 +646,40 @@
   }
 
   function handleCapturedLogin(username, password) {
-    if (!password || password.length < 3) return;
+    if (!password || password.length < 2) return;
+    const finalUsername = (username || lastCapturedUsername || '').trim();
     const hostname = window.location.hostname.replace(/^www\./, '');
-    showAutosavePrompt(hostname, username, password);
+
+    // Check if this credential already exists in the vault
+    safeSendMessage({ type: 'GET_MATCHING_LOGINS', url: window.location.href }, (res) => {
+      if (!isRuntimeValid()) return;
+      const matches = res?.matches || [];
+
+      // 1. Exact match check:
+      // If ANY existing credential for this site already has this exact password, DO NOT PROMPT!
+      const isAlreadySaved = matches.some((m) => {
+        const pMatch = m.password === password;
+        if (!pMatch) return false;
+        // If password matches and usernames match (or either is empty), it's already saved
+        if (!finalUsername || !m.username) return true;
+        return m.username.toLowerCase() === finalUsername.toLowerCase();
+      });
+
+      if (isAlreadySaved) {
+        return; // Password already stored, silently skip prompt!
+      }
+
+      // 2. Check if updating an existing account's password:
+      const existingAccount = matches.find(
+        (m) => finalUsername && m.username && m.username.toLowerCase() === finalUsername.toLowerCase()
+      );
+
+      const isUpdate = Boolean(existingAccount);
+      showAutosavePrompt(hostname, finalUsername || existingAccount?.username || '', password, isUpdate);
+    });
   }
 
-  function showAutosavePrompt(hostname, username, password) {
+  function showAutosavePrompt(hostname, username, password, isUpdate = false) {
     const existing = document.querySelector('.zerovault-autosave-toast');
     if (existing) existing.remove();
 
@@ -651,16 +688,16 @@
     toast.innerHTML = `
       <div class="zerovault-toast-head">
         <div class="zerovault-toast-logo">${ZEROVAULT_SVG}</div>
-        <span class="zerovault-toast-title">Save to ZeroVault?</span>
+        <span class="zerovault-toast-title">${isUpdate ? 'Update Password?' : 'Save to ZeroVault?'}</span>
         <button class="zerovault-toast-close">&times;</button>
       </div>
       <div class="zerovault-toast-body">
-        Save credentials for <strong>${escapeHtml(hostname)}</strong>?<br>
-        <span style="color: #64748b;">User: ${escapeHtml(username || 'Default')}</span>
+        ${isUpdate ? 'Update saved password for' : 'Save credentials for'} <strong>${escapeHtml(hostname)}</strong>?<br>
+        ${username ? `<span style="color: #64748b; font-size: 11px;">User: ${escapeHtml(username)}</span>` : ''}
       </div>
       <div class="zerovault-toast-actions">
         <button class="zerovault-btn zerovault-btn-secondary" id="zv-btn-never">Never</button>
-        <button class="zerovault-btn zerovault-btn-primary" id="zv-btn-save">Save Password</button>
+        <button class="zerovault-btn zerovault-btn-primary" id="zv-btn-save">${isUpdate ? 'Update Password' : 'Save Password'}</button>
       </div>
     `;
 
@@ -676,14 +713,14 @@
           type: 'SAVE_CREDENTIAL',
           title: hostname,
           website: window.location.origin,
-          username,
+          username: username || '',
           password
         },
         (res) => {
           if (res && res.success) {
             toast.innerHTML = `
               <div style="display:flex; align-items:center; gap:8px; color:#10b981; font-weight:600; font-size:13px;">
-                <span>✓ Password saved to ZeroVault!</span>
+                <span>✓ Password ${isUpdate ? 'updated' : 'saved'} to ZeroVault!</span>
               </div>
             `;
             setTimeout(() => toast.remove(), 2000);
@@ -780,18 +817,22 @@
     if (!isRuntimeValid()) return;
     const { passwordInputs, usernameInputs, hasLogin } = getLoginFields();
 
-    // If NOT a login form or auth page, DO NOT show anything
+    // If NOT a login form or auth page, cleanly purge everything
     if (!hasLogin) {
       if (draggablePill) {
         draggablePill.remove();
         draggablePill = null;
       }
+      removeAllBadges();
+      closeActiveDropdown();
       return;
     }
 
-    // Attach in-field focus badges
-    passwordInputs.forEach((p) => attachBadgeToInput(p));
-    usernameInputs.forEach((u) => attachBadgeToInput(u));
+    const allInputs = [...passwordInputs, ...usernameInputs];
+    cleanupOrphanedBadges(allInputs);
+
+    // Attach in-field focus badges only to active login fields
+    allInputs.forEach((el) => attachBadgeToInput(el));
 
     // Show moveable assistant pill
     safeSendMessage({ type: 'GET_MATCHING_LOGINS', url: window.location.href }, (res) => {
