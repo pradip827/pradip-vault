@@ -221,10 +221,20 @@ import { DecryptedVault } from '../../core/models/vault.model';
                   Disconnect
                 </app-button>
               } @else {
-                <app-button variant="secondary" size="sm" (clicked)="openDriveConfig()" id="btn-configure-drive">
-                  <app-icon name="settings" [size]="14" />
-                  Configure Client ID
-                </app-button>
+                @if (!syncService.googleClientId()) {
+                  <app-button variant="secondary" size="sm" (clicked)="openDriveConfig()" id="btn-configure-drive">
+                    <app-icon name="settings" [size]="14" />
+                    Configure Client ID
+                  </app-button>
+                } @else {
+                  <button
+                    (click)="openDriveConfig()"
+                    title="Change or view Google Client ID"
+                    style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:0.8rem; text-decoration:underline; padding:0 0.5rem;"
+                  >
+                    Change Client ID
+                  </button>
+                }
                 <app-button variant="primary" size="sm" (clicked)="handleDriveConnect()" id="btn-connect-drive">
                   <app-icon name="cloud" [size]="14" />
                   Connect Drive

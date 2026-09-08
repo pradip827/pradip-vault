@@ -23,6 +23,29 @@ export class GoogleDriveService {
 
   public readonly isTokenValid = signal<boolean>(false);
 
+  constructor() {
+    this.restorePersistedToken();
+  }
+
+  private restorePersistedToken(): void {
+    try {
+      if (typeof window === 'undefined' || !window.sessionStorage) return;
+      const raw = sessionStorage.getItem('zerovault_drive_token');
+      if (raw) {
+        const data = JSON.parse(raw);
+        if (data && data.token && data.expiresAt && Date.now() < data.expiresAt) {
+          this.activeAccessToken = data.token;
+          this.tokenExpiresAt = data.expiresAt;
+          this.isTokenValid.set(true);
+        } else {
+          sessionStorage.removeItem('zerovault_drive_token');
+        }
+      }
+    } catch {
+      // Ignore in non-browser/restricted environments
+    }
+  }
+
   /**
    * Returns current access token if valid and unexpired.
    */
@@ -40,15 +63,34 @@ export class GoogleDriveService {
     this.activeAccessToken = token;
     this.tokenExpiresAt = Date.now() + (expiresInSeconds * 1000) - 60000; // 1m buffer
     this.isTokenValid.set(true);
+
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        sessionStorage.setItem(
+          'zerovault_drive_token',
+          JSON.stringify({ token, expiresAt: this.tokenExpiresAt })
+        );
+      }
+    } catch {
+      // Ignore
+    }
   }
 
   /**
-   * Clears in-memory OAuth tokens.
+   * Clears in-memory and session OAuth tokens.
    */
   public clearTokens(): void {
     this.activeAccessToken = null;
     this.tokenExpiresAt = 0;
     this.isTokenValid.set(false);
+
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        sessionStorage.removeItem('zerovault_drive_token');
+      }
+    } catch {
+      // Ignore
+    }
   }
 
   /**

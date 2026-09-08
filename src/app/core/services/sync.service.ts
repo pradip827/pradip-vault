@@ -77,6 +77,11 @@ export class SyncService {
     if (!this.googleClientId()) {
       await this.fetchRemoteConfig();
     }
+
+    // Restore connection state if session token is still valid
+    if (this.googleDrive.getAccessToken()) {
+      this.isConnected.set(true);
+    }
   }
 
   /**
