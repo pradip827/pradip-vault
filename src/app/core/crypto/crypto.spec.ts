@@ -237,5 +237,18 @@ describe('Cryptographic Engine & Security Core', () => {
       const decrypted = await cryptoService.decryptVaultDirect(newEnvelope, masterPass);
       expect(decrypted).toBe(updatedPlaintext);
     });
+
+    it('should support direct decryption of envelope using active session key', async () => {
+      const initial = await cryptoService.encryptVaultWithSessionDirect(testPlaintext, masterPass, {
+        memory: 32768,
+        iterations: 3
+      });
+
+      const decrypted = await cryptoService.decryptVaultWithKeyDirect(
+        initial.envelope,
+        initial.sessionKey
+      );
+      expect(decrypted).toBe(testPlaintext);
+    });
   });
 });

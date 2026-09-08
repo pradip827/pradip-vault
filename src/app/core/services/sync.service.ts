@@ -164,6 +164,75 @@ export class SyncService {
   }
 
   /**
+   * Overwrites the remote vault in Google Drive with the local vault envelope.
+   * Resolves encryption mismatch or stale remote files by force-pushing local data.
+   */
+  public async overwriteRemoteVault(): Promise<void> {
+    if (this.vaultService.isLocked()) {
+      throw new Error('Vault is locked. Unlock vault before syncing.');
+    }
+
+    const token = this.googleDrive.getAccessToken();
+    if (!token) {
+      this.isConnected.set(false);
+      throw new Error('Google Drive session expired or not connected. Please connect first.');
+    }
+
+    const localVault = this.vaultService.vault();
+    const localEnvelope = await this.storage.loadVaultEnvelope();
+    if (!localVault || !localEnvelope) {
+      throw new Error('Local vault is missing.');
+    }
+
+    this.isSyncing.set(true);
+    this.syncStatus.set('syncing');
+    this.syncError.set(null);
+
+    try {
+      const remoteFileInfo = await this.googleDrive.searchVaultFile(token);
+      let fileId: string;
+
+      if (remoteFileInfo) {
+        fileId = remoteFileInfo.id;
+        await this.googleDrive.updateVaultFile(
+          token,
+          fileId,
+          JSON.stringify(localEnvelope),
+          localVault.revision
+        );
+      } else {
+        const uploadRes = await this.googleDrive.uploadVaultFile(
+          token,
+          JSON.stringify(localEnvelope),
+          localVault.revision
+        );
+        fileId = uploadRes.id;
+      }
+
+      await this.storage.saveSyncBase(localEnvelope, localVault.revision);
+      await this.storage.saveSyncMetadata({
+        lastSyncedAt: new Date().toISOString(),
+        remoteFileId: fileId,
+        remoteRevision: localVault.revision
+      });
+
+      const nowIso = new Date().toISOString();
+      this.lastSyncTime.set(nowIso);
+      this.syncStatus.set('synced');
+      this.syncError.set(null);
+      this.toast.success('Successfully overwritten Google Drive with local vault!');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.syncError.set(msg);
+      this.syncStatus.set('error');
+      this.toast.error(`Overwrite failed: ${msg}`);
+      throw err;
+    } finally {
+      this.isSyncing.set(false);
+    }
+  }
+
+  /**
    * Orchestrates the zero-knowledge remote sync cycle with 3-way conflict resolution.
    */
   public async syncNow(): Promise<SyncSummary> {
@@ -231,10 +300,13 @@ export class SyncService {
       const remoteContent = await this.googleDrive.downloadVaultFile(token, remoteFileInfo.id);
       const remoteEnvelope = JSON.parse(remoteContent) as EncryptedVaultEnvelope;
 
-      // Decrypt remote envelope
-      // In unlocked session, derive session key or decrypt via CryptoService
-      // Note: CryptoService can decrypt envelope using current sessionKey or masterPassword
-      const remotePlaintext = await this.decryptEnvelopeForSync(remoteEnvelope);
+      // Fast-path: if remote envelope ciphertext matches local envelope, short-circuit
+      let remotePlaintext: string;
+      if (localEnvelope.ciphertext === remoteEnvelope.ciphertext) {
+        remotePlaintext = JSON.stringify(localVault);
+      } else {
+        remotePlaintext = await this.decryptEnvelopeForSync(remoteEnvelope);
+      }
       const remoteVault = JSON.parse(remotePlaintext) as DecryptedVault;
 
       // Rollback protection check
@@ -336,14 +408,24 @@ export class SyncService {
    * Decrypts an envelope during sync using the active session key or current vault credentials.
    */
   private async decryptEnvelopeForSync(envelope: EncryptedVaultEnvelope): Promise<string> {
-    // If the envelope shares the same salt and parameters as current session, decrypt with session key
-    // Otherwise, we invoke direct decryption with session key or fallback
-    try {
-      return await this.crypto.decryptVault(envelope, '');
-    } catch {
-      // Re-try with direct method or decrypt through active session key
-      throw new Error('Unable to decrypt remote envelope with active vault credentials.');
+    const localEnvelope = await this.storage.loadVaultEnvelope();
+    if (localEnvelope && localEnvelope.ciphertext === envelope.ciphertext) {
+      const local = this.vaultService.vault();
+      if (local) {
+        return JSON.stringify(local);
+      }
     }
+
+    const sessionKey = this.vaultService.getSessionKey();
+    if (sessionKey) {
+      try {
+        return await this.crypto.decryptVaultWithKey(envelope, sessionKey);
+      } catch (err) {
+        console.warn('Decryption with active session key failed:', err);
+      }
+    }
+
+    throw new Error('Unable to decrypt remote envelope with active vault credentials.');
   }
 
   /**

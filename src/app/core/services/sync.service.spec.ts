@@ -316,4 +316,27 @@ describe('SyncService (3-Way Conflict Resolution & Zero-Knowledge Remote Sync)',
     expect(res.vault.entries.length).toBe(1);
     expect(res.vault.entries[0].password).toBe('new-pass');
   });
+
+  it('should force-push and overwrite remote vault on Google Drive', async () => {
+    await vaultService.createVault('Test Vault', 'StrongMasterPass123!');
+    const token = 'mock-test-token';
+    vi.spyOn(googleDriveService, 'getAccessToken').mockReturnValue(token);
+    vi.spyOn(googleDriveService, 'searchVaultFile').mockResolvedValue({
+      id: 'remote-file-id-999',
+      name: 'vault.zerovault',
+      revision: 1,
+      modifiedTime: t0
+    });
+    const updateSpy = vi.spyOn(googleDriveService, 'updateVaultFile').mockResolvedValue();
+
+    await syncService.overwriteRemoteVault();
+
+    expect(updateSpy).toHaveBeenCalledWith(
+      token,
+      'remote-file-id-999',
+      expect.any(String),
+      expect.any(Number)
+    );
+    expect(syncService.syncStatus()).toBe('synced');
+  });
 });

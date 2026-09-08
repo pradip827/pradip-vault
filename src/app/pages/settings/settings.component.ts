@@ -237,8 +237,24 @@ import { DecryptedVault } from '../../core/models/vault.model';
 
           @if (syncService.syncError()) {
             <div class="error-alert">
-              <app-icon name="alert" [size]="16" />
-              <span>{{ syncService.syncError() }}</span>
+              <div class="error-msg-row">
+                <app-icon name="alert" [size]="16" />
+                <span>{{ syncService.syncError() }}</span>
+              </div>
+              @if (!vaultService.isLocked()) {
+                <div class="error-actions-row">
+                  <app-button
+                    variant="danger"
+                    size="sm"
+                    [disabled]="syncService.isSyncing()"
+                    (clicked)="handleOverwriteRemote()"
+                    id="btn-overwrite-remote"
+                  >
+                    <app-icon name="upload" [size]="14" />
+                    Overwrite Remote with Local Vault
+                  </app-button>
+                </div>
+              }
             </div>
           }
         </div>
@@ -922,14 +938,25 @@ import { DecryptedVault } from '../../core/models/vault.model';
 
     .error-alert {
       display: flex;
-      align-items: center;
-      gap: 0.5rem;
+      flex-direction: column;
+      gap: 0.65rem;
       padding: 0.65rem 0.85rem;
       background: var(--status-error-bg);
       border: 1px solid var(--status-error-border);
       border-radius: var(--radius-sm);
       font-size: 0.8125rem;
       color: var(--status-error);
+    }
+
+    .error-msg-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .error-actions-row {
+      display: flex;
+      justify-content: flex-end;
     }
 
     .import-busy-row {
@@ -1132,6 +1159,14 @@ export class SettingsComponent {
   public async handleSyncNow(): Promise<void> {
     try {
       await this.syncService.syncNow();
+    } catch {
+      // Handled by syncService toast
+    }
+  }
+
+  public async handleOverwriteRemote(): Promise<void> {
+    try {
+      await this.syncService.overwriteRemoteVault();
     } catch {
       // Handled by syncService toast
     }
