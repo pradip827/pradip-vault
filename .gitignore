@@ -22,6 +22,7 @@ yarn-error.log*
 *.pfx
 *.p12
 *.pradipvault
+*.zerovault
 private_keys/
 credentials.json
 
