@@ -58,6 +58,8 @@ declare const chrome: any;
   providedIn: 'root'
 })
 export class ExtensionBridgeService {
+  public static readonly DETERMINISTIC_EXTENSION_ID = 'jobhpopnmlcchdgkgghbhomdpipfnegg';
+
   private readonly vaultService = inject(VaultService);
 
   private activeSession: ExtensionAuthSession | null = null;
@@ -91,6 +93,13 @@ export class ExtensionBridgeService {
     const detectedId = document.documentElement.dataset['zerovaultExtensionId'];
     if (detectedId) {
       this.extensionId = detectedId;
+    } else if (!this.extensionId) {
+      // Fall back to deterministic extension ID derived from extension/manifest.json key
+      this.extensionId = ExtensionBridgeService.DETERMINISTIC_EXTENSION_ID;
+    }
+
+    if (!this.vaultService.isLocked() && !this.activeSession) {
+      this.establishSession();
     }
 
     // Listen for extension ready event
@@ -98,9 +107,16 @@ export class ExtensionBridgeService {
       if (event.detail?.extensionId) {
         this.extensionId = event.detail.extensionId;
         // Re-establish session if vault is already unlocked
-        if (!this.vaultService.isLocked() && !this.activeSession) {
+        if (!this.vaultService.isLocked()) {
           this.establishSession();
         }
+      }
+    });
+
+    // Re-establish or reconnect port when user switches back to this tab
+    window.addEventListener('focus', () => {
+      if (!this.vaultService.isLocked() && (!this.port || !this.activeSession)) {
+        this.establishSession();
       }
     });
   }

@@ -10,6 +10,7 @@ import { VaultService } from './core/services/vault.service';
 import { AutoLockService } from './core/services/autolock.service';
 import { ToastService } from './core/services/toast.service';
 import { PwaService } from './core/services/pwa.service';
+import { ExtensionBridgeService } from './core/services/extension-bridge.service';
 
 @Component({
   selector: 'app-root',
@@ -32,6 +33,7 @@ export class App implements OnInit {
   public readonly vaultService = inject(VaultService);
   public readonly autoLockService = inject(AutoLockService);
   public readonly pwaService = inject(PwaService);
+  public readonly extensionBridge = inject(ExtensionBridgeService);
   private readonly router = inject(Router);
   private readonly toast = inject(ToastService);
 
