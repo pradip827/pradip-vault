@@ -30,6 +30,7 @@ describe('StorageService (IndexedDB Persistence)', () => {
     service = new StorageService();
     // Clear storage before each test
     await service.deleteVault();
+    await service.clearSyncData();
   });
 
   it('should initially report hasVault as false', async () => {
@@ -50,15 +51,28 @@ describe('StorageService (IndexedDB Persistence)', () => {
     expect(loaded).toEqual(mockEnvelope);
   });
 
-  it('should track highestKnownRevision and prevent revision rollback', async () => {
+  it('should track highestKnownRevision and enforce the invariant that it cannot replace with an older revision', async () => {
     await service.saveVaultEnvelope(mockEnvelope, 10);
     let meta = await service.getMetadata();
     expect(meta.highestKnownRevision).toBe(10);
 
-    // Save older revision 5
-    await service.saveVaultEnvelope(mockEnvelope, 5);
+    // Saving older revision 5 must reject and preserve stored envelope
+    await expect(service.saveVaultEnvelope(mockEnvelope, 5)).rejects.toThrow(
+      /Rollback prevented: Cannot replace stored vault envelope/
+    );
+
     meta = await service.getMetadata();
-    expect(meta.highestKnownRevision).toBe(10); // Still 10!
+    expect(meta.highestKnownRevision).toBe(10);
+    const loaded = await service.loadVaultEnvelope();
+    expect(loaded).toEqual(mockEnvelope);
+
+    // Saving equal revision succeeds
+    await expect(service.saveVaultEnvelope(mockEnvelope, 10)).resolves.not.toThrow();
+
+    // Saving newer revision succeeds and increments highestKnownRevision
+    await expect(service.saveVaultEnvelope(mockEnvelope, 11)).resolves.not.toThrow();
+    meta = await service.getMetadata();
+    expect(meta.highestKnownRevision).toBe(11);
   });
 
   it('should delete the stored vault record', async () => {

@@ -29,32 +29,31 @@ export class VaultService {
   public readonly revision = computed(() => this.vault()?.revision ?? 0);
   public readonly vaultName = computed(() => this.vault()?.vaultName ?? 'ZeroVault');
 
-  constructor() {
-    this.checkExistingVault();
-    if (typeof window !== 'undefined') {
-      window.addEventListener('message', (event) => {
-        if (event.data?.type === 'ZEROVAULT_REQUEST_SYNC') {
-          const v = this.vault();
-          if (v && !this.isLocked()) {
-            this.broadcastToExtension(v);
-          }
-        }
-      });
+  private readonly lockCallbacks: Array<() => void> = [];
+  private readonly unlockCallbacks: Array<() => void> = [];
+
+  public onLock(callback: () => void): void {
+    this.lockCallbacks.push(callback);
+  }
+
+  public onUnlock(callback: () => void): void {
+    this.unlockCallbacks.push(callback);
+  }
+
+  private triggerUnlockHooks(): void {
+    for (const cb of this.unlockCallbacks) {
+      try { cb(); } catch {}
     }
   }
 
-  private broadcastToExtension(vault: DecryptedVault | null): void {
-    try {
-      if (typeof window !== 'undefined' && vault && Array.isArray(vault.entries)) {
-        window.postMessage({
-          type: 'ZEROVAULT_WEB_VAULT_SYNC',
-          entries: vault.entries,
-          vaultName: vault.vaultName || 'ZeroVault'
-        }, '*');
-      }
-    } catch {
-      // Ignore
+  private triggerLockHooks(): void {
+    for (const cb of this.lockCallbacks) {
+      try { cb(); } catch {}
     }
+  }
+
+  constructor() {
+    this.checkExistingVault();
   }
 
   /**
@@ -100,6 +99,7 @@ export class VaultService {
       this.vault.set(emptyPayload);
       this.isLocked.set(false);
       this.hasExistingVault.set(true);
+      this.triggerUnlockHooks();
     } finally {
       this.isBusy.set(false);
       this.busyMessage.set('');
@@ -143,7 +143,7 @@ export class VaultService {
 
       this.vault.set(parsed);
       this.isLocked.set(false);
-      this.broadcastToExtension(parsed);
+      this.triggerUnlockHooks();
     } finally {
       this.isBusy.set(false);
       this.busyMessage.set('');
@@ -171,6 +171,7 @@ export class VaultService {
     this.vault.set(null);
     this.isLocked.set(true);
     this.crypto.terminateWorker();
+    this.triggerLockHooks();
   }
 
   /**
@@ -217,7 +218,6 @@ export class VaultService {
 
       await this.storage.saveVaultEnvelope(envelope, updatedVault.revision);
       this.vault.set(updatedVault);
-      this.broadcastToExtension(updatedVault);
     } finally {
       this.isBusy.set(false);
       this.busyMessage.set('');

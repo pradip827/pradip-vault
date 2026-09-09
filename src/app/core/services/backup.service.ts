@@ -3,7 +3,7 @@ import { VaultService } from './vault.service';
 import { StorageService } from './storage.service';
 import { CryptoService } from './crypto.service';
 import { ToastService } from './toast.service';
-import { VaultBackupFile, EncryptedVaultEnvelope, KDF_SECURITY_FLOOR } from '../crypto/crypto.types';
+import { VaultBackupFile, EncryptedVaultEnvelope, KDF_SECURITY_FLOOR, KDF_SECURITY_CEILING } from '../crypto/crypto.types';
 import { DecryptedVault, VaultEntry } from '../models/vault.model';
 import { serializeCanonicalJson, computeSha256Hex, decodeBase64Url } from '../crypto/serializer';
 
@@ -128,6 +128,27 @@ export class BackupService {
 
     if (kdf.params.iterations < KDF_SECURITY_FLOOR.MIN_ITERATIONS) {
       throw new Error(`Insecure KDF parameters: Iteration count (${kdf.params.iterations}) is below security floor (${KDF_SECURITY_FLOOR.MIN_ITERATIONS}).`);
+    }
+
+    // Validate KDF ceiling to prevent resource-exhaustion from malicious backups.
+    // Ceiling validation mirrors argon2.ts — reject BEFORE any decryption attempt.
+    const assertSafePositiveInteger = (v: unknown, name: string): void => {
+      if (typeof v !== 'number' || !Number.isFinite(v) || !Number.isInteger(v) || v < 1) {
+        throw new Error(`Invalid backup file: KDF ${name} must be a finite positive integer; got ${v}.`);
+      }
+    };
+    assertSafePositiveInteger(kdf.params.memory, 'memory');
+    assertSafePositiveInteger(kdf.params.iterations, 'iterations');
+    assertSafePositiveInteger(kdf.params.parallelism, 'parallelism');
+
+    if (kdf.params.memory > KDF_SECURITY_CEILING.MAX_MEMORY_KIB) {
+      throw new Error(`Insecure KDF parameters: Memory cost (${kdf.params.memory} KiB) exceeds maximum ceiling (${KDF_SECURITY_CEILING.MAX_MEMORY_KIB} KiB = 512 MiB).`);
+    }
+    if (kdf.params.iterations > KDF_SECURITY_CEILING.MAX_ITERATIONS) {
+      throw new Error(`Insecure KDF parameters: Iteration count (${kdf.params.iterations}) exceeds maximum ceiling (${KDF_SECURITY_CEILING.MAX_ITERATIONS}).`);
+    }
+    if (kdf.params.parallelism > KDF_SECURITY_CEILING.MAX_PARALLELISM) {
+      throw new Error(`Insecure KDF parameters: Parallelism (${kdf.params.parallelism}) exceeds maximum ceiling (${KDF_SECURITY_CEILING.MAX_PARALLELISM}).`);
     }
 
     try {
@@ -344,7 +365,7 @@ export class BackupService {
       }
 
       entries.push({
-        id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'entry-' + Math.random().toString(36).substring(2, 11),
+        id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : (() => { throw new Error('crypto.randomUUID not available'); })(),
         category: 'login',
         title,
         website: url,

@@ -117,7 +117,7 @@ export class CryptoService {
   ): Promise<EncryptedVaultSessionResult> {
     try {
       const worker = this.getWorker();
-      const id = 'req-' + Math.random().toString(36).substring(2, 11);
+      const id = crypto.randomUUID();
 
       const workerRes = await new Promise<EncryptedSessionData>((resolve, reject) => {
         this.pendingRequests.set(id, { resolve, reject });
@@ -149,7 +149,7 @@ export class CryptoService {
   ): Promise<DecryptedVaultSessionResult> {
     try {
       const worker = this.getWorker();
-      const id = 'req-' + Math.random().toString(36).substring(2, 11);
+      const id = crypto.randomUUID();
 
       const workerRes = await new Promise<DecryptedSessionData>((resolve, reject) => {
         this.pendingRequests.set(id, { resolve, reject });
@@ -184,7 +184,7 @@ export class CryptoService {
   ): Promise<EncryptedVaultEnvelope> {
     try {
       const worker = this.getWorker();
-      const id = 'req-' + Math.random().toString(36).substring(2, 11);
+      const id = crypto.randomUUID();
 
       return await new Promise<EncryptedVaultEnvelope>((resolve, reject) => {
         this.pendingRequests.set(id, { resolve, reject });
@@ -214,7 +214,7 @@ export class CryptoService {
   ): Promise<string> {
     try {
       const worker = this.getWorker();
-      const id = 'req-' + Math.random().toString(36).substring(2, 11);
+      const id = crypto.randomUUID();
 
       return await new Promise<string>((resolve, reject) => {
         this.pendingRequests.set(id, { resolve, reject });

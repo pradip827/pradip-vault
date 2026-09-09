@@ -3,6 +3,7 @@
   "name": "ZeroVault - Password Manager",
   "version": "1.0.0",
   "description": "Zero-Knowledge client-side encrypted password manager with 1-click autofill and autosave.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtUDgzgE+bgB5g2wEIG2z/Tkf6CkmhDCpwVZ9FUfsdjgW2ypHCPO7FRrzQXqafYBhlHV0SynyDi8Ctfwm3abW7ZKnyXCYyn0ZvRZkMzWOd7Rs2ixaNfIzy8+U1GmSG3oWdK7DUeQnPSe1ltHvbFigkQ0vOFwupGl5XeWsirCSrGYrIfLae8E2uPtACFa8zxsBKSrVqW8XuA7DRaR6IOJt3+8gp4MiOcS9QcsmnojpKXujldrJIMjm48xJ7yH/XYS/fnCtRRMqtHLDHVjwKpYJOP+cl7TJCtqrrsIZ4sDFp1hpwPDMc72w3RJ+WoJApZ3Y02CLDN1vOAvfen9eTO9LWQIDAQAB",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
@@ -24,19 +25,41 @@
     "type": "module"
   },
   "permissions": [
-    "storage",
     "activeTab",
-    "tabs",
-    "scripting"
+    "tabs"
   ],
   "host_permissions": [
     "<all_urls>"
   ],
+  "externally_connectable": {
+    "matches": [
+      "https://pradip-vault.pages.dev/*"
+    ]
+  },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content/autofill.js"],
-      "css": ["content/autofill.css"],
+      "matches": [
+        "https://pradip-vault.pages.dev/*"
+      ],
+      "js": [
+        "content/vault-bridge.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "exclude_matches": [
+        "https://pradip-vault.pages.dev/*"
+      ],
+      "js": [
+        "content/autofill.js"
+      ],
+      "css": [
+        "content/autofill.css"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     }
@@ -48,7 +71,9 @@
         "icons/icon-32.png",
         "icons/icon-48.png"
       ],
-      "matches": ["<all_urls>"]
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }

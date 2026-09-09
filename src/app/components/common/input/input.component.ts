@@ -159,7 +159,7 @@ import { IconComponent } from '../icon/icon.component';
   `]
 })
 export class InputComponent implements ControlValueAccessor {
-  public readonly id = input<string>('input-' + Math.random().toString(36).substring(2, 9));
+  public readonly id = input<string>('input-' + crypto.randomUUID().replace(/-/g, '').substring(0, 8));
   public readonly label = input<string>('');
   public readonly type = input<'text' | 'password' | 'search' | 'email'>('text');
   public readonly placeholder = input<string>('');

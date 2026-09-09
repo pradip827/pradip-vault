@@ -24,25 +24,13 @@ export class GoogleDriveService {
   public readonly isTokenValid = signal<boolean>(false);
 
   constructor() {
-    this.restorePersistedToken();
-  }
-
-  private restorePersistedToken(): void {
+    // Purge any legacy tokens from sessionStorage to ensure strictly memory-only operation
     try {
-      if (typeof window === 'undefined' || !window.sessionStorage) return;
-      const raw = sessionStorage.getItem('zerovault_drive_token');
-      if (raw) {
-        const data = JSON.parse(raw);
-        if (data && data.token && data.expiresAt && Date.now() < data.expiresAt) {
-          this.activeAccessToken = data.token;
-          this.tokenExpiresAt = data.expiresAt;
-          this.isTokenValid.set(true);
-        } else {
-          sessionStorage.removeItem('zerovault_drive_token');
-        }
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        sessionStorage.removeItem('zerovault_drive_token');
       }
     } catch {
-      // Ignore in non-browser/restricted environments
+      // Ignore in non-browser environments
     }
   }
 
@@ -57,27 +45,17 @@ export class GoogleDriveService {
   }
 
   /**
-   * Explicitly sets access token (e.g. from tests, OAuth redirect, or mock).
+   * Explicitly sets access token in volatile memory only.
+   * Tokens are never persisted to localStorage, sessionStorage, or IndexedDB.
    */
   public setAccessToken(token: string, expiresInSeconds: number = 3600): void {
     this.activeAccessToken = token;
     this.tokenExpiresAt = Date.now() + (expiresInSeconds * 1000) - 60000; // 1m buffer
     this.isTokenValid.set(true);
-
-    try {
-      if (typeof window !== 'undefined' && window.sessionStorage) {
-        sessionStorage.setItem(
-          'zerovault_drive_token',
-          JSON.stringify({ token, expiresAt: this.tokenExpiresAt })
-        );
-      }
-    } catch {
-      // Ignore
-    }
   }
 
   /**
-   * Clears in-memory and session OAuth tokens.
+   * Clears in-memory volatile OAuth tokens.
    */
   public clearTokens(): void {
     this.activeAccessToken = null;
@@ -222,7 +200,9 @@ export class GoogleDriveService {
    * Uploads a new encrypted envelope file to appDataFolder via multipart POST.
    */
   public async uploadVaultFile(accessToken: string, envelopeJson: string, revision: number): Promise<{ id: string }> {
-    const boundary = '-------ZeroVaultMultipartBoundary' + Math.random().toString(36).substring(2);
+    const boundaryToken = Array.from(crypto.getRandomValues(new Uint8Array(12)))
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+    const boundary = '-------ZeroVaultMultipartBoundary' + boundaryToken;
     const delimiter = `\r\n--${boundary}\r\n`;
     const closeDelimiter = `\r\n--${boundary}--`;
 
@@ -267,7 +247,9 @@ export class GoogleDriveService {
    * Updates an existing remote encrypted envelope file in appDataFolder.
    */
   public async updateVaultFile(accessToken: string, fileId: string, envelopeJson: string, revision: number): Promise<void> {
-    const boundary = '-------ZeroVaultMultipartBoundary' + Math.random().toString(36).substring(2);
+    const boundaryToken = Array.from(crypto.getRandomValues(new Uint8Array(12)))
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+    const boundary = '-------ZeroVaultMultipartBoundary' + boundaryToken;
     const delimiter = `\r\n--${boundary}\r\n`;
     const closeDelimiter = `\r\n--${boundary}--`;
 

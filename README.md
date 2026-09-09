@@ -36,8 +36,9 @@
 - **Clipboard Hygiene**: Automated clipboard auto-clearing timer (default: 30s) and manual "Clear Now" action.
 - **Encrypted Backup & Restore (`.zerovault`)**: Authenticated backup format with pre-KDF SHA-256 checksum verification, KDF security floor check, and conflict-free merge vs overwrite restore modes.
 - **Google Drive Sync & 3-Way Conflict Engine**: Zero-knowledge sync via Google Drive's isolated `appDataFolder` (`drive.appdata` scope), encrypted base snapshot persistence, deterministic 3-way merge, and lossless collision copies.
+- **Chrome Browser Extension & Autofill**: Native Manifest V3 extension featuring 1-click in-field autofill, moveable floating assistant pill, intelligent login autosave with duplicate detection, and live Web Vault sync bridge.
 - **Progressive Web App (PWA) & Offline First**: Zero-dependency Service Worker precaching core assets, network-first navigation with `/index.html` fallback, and native install prompt support.
-- **Cloudflare Pages Deployment**: Preconfigured `_headers` (strict CSP, HSTS, COOP, Permissions-Policy) and `_redirects` SPA rewrite rules.
+- **Cloudflare Pages & Serverless Configuration**: Preconfigured `_headers` (strict CSP, HSTS, COOP, Permissions-Policy), `_redirects` SPA rewrite rules, and `/api/config` serverless function for automated `GOOGLE_CLIENT_ID` injection.
 
 ---
 
@@ -46,6 +47,15 @@
 ```
 zerovault/
 ├── android/                         # Capacitor Native Android project
+├── extension/                       # Chrome Browser Extension (Manifest V3)
+│   ├── manifest.json                # Extension manifest
+│   ├── background/                  # Service worker (domain matching, vault state)
+│   ├── content/                     # In-page autofill, floating pill & autosave
+│   ├── popup/                       # Toolbar popup UI (search, generator, session status)
+│   └── icons/                       # Raster & vector extension icons
+├── functions/                       # Cloudflare Pages Functions
+│   └── api/
+│       └── config.js                # Serverless GOOGLE_CLIENT_ID runtime endpoint
 ├── public/
 │   ├── _headers                     # Cloudflare Pages security & caching headers
 │   ├── _redirects                   # Cloudflare Pages SPA rewrite rule
@@ -138,7 +148,7 @@ npm start
 Navigate to `http://localhost:4300` in your browser.
 
 ### Run Automated Unit Tests
-Executes the comprehensive Vitest unit test suite (146 tests across 20 suites):
+Executes the comprehensive Vitest unit test suite (178 tests across 21 suites):
 ```bash
 npm test
 ```
@@ -175,6 +185,30 @@ The output APK will be located at `android/app/build/outputs/apk/debug/app-debug
 
 ---
 
+## 🧩 Chrome Browser Extension
+
+ZeroVault includes a built-in Manifest V3 browser extension for 1-click in-page autofill, autosave, and seamless synchronization with your authoritative Web Vault:
+
+### Security Architecture & Features
+- **Authenticated Companion Model**: The Web Vault (`https://pradip-vault.pages.dev`) remains the single cryptographic root. The extension operates as an authenticated companion holding ephemeral credentials in volatile memory only.
+- **Least-Privilege Autofill**: Injected content scripts receive **only metadata** (`{ id, title, username }`) with **zero passwords**. A single password is provided to the tab only upon explicit user click.
+- **Strict Normalized Origin Matching**: Protects against cousin-domain and substring spoofing (e.g. `evilgithub.com` or `github.com.evil.com` cannot trigger or receive `github.com` credentials).
+- **Explicit-Confirmation Autosave**: Detects login submissions and prompts the user with an in-page confirmation toast. Passwords are never saved silently.
+- **Zero Plaintext Persistence**: Decrypted vaults are never stored in `chrome.storage` or IndexedDB. A restarted MV3 background service worker starts in a locked state by default.
+- **Zero Master Password Handling**: Master passwords are never input or stored in the extension. Key derivation remains exclusive to the authoritative Web Vault via Argon2id ($64\text{ MiB}, t=3, p=1$).
+
+### Installation (Developer Mode)
+1. In Google Chrome, open `chrome://extensions`.
+2. Enable **Developer mode** using the toggle switch in the top-right corner.
+3. Click **Load unpacked**.
+4. Select the `extension/` folder from this repository:
+   ```
+   pradip-vault/extension
+   ```
+5. Open and unlock your Web Vault at `https://pradip-vault.pages.dev` to establish the authenticated session.
+
+---
+
 ## ☁️ Cloudflare Pages Deployment
 
 ZeroVault is 100% static and requires zero application servers.
@@ -182,7 +216,8 @@ ZeroVault is 100% static and requires zero application servers.
 1. **Framework Preset**: `None`
 2. **Build Command**: `npm run build`
 3. **Build Output Directory**: `dist/zerovault/browser`
-4. **Environment Variables**: None required (OAuth Client IDs are configured directly inside Settings by the user).
+4. **Environment Variables (Optional)**:
+   - `GOOGLE_CLIENT_ID`: Your Google OAuth 2.0 Web Client ID. When configured, Cloudflare Pages serverless function (`functions/api/config.js`) injects it automatically so you never have to re-enter it manually.
 5. **Security & Routing**:
    - `public/_headers` deploys strict CSP, HSTS, X-Frame-Options, and immutable asset caching.
    - `public/_redirects` guarantees client-side SPA routing for all paths (`/* /index.html 200`).

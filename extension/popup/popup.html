@@ -16,7 +16,7 @@
       </div>
       <div class="header-actions">
         <span id="badge-status" class="badge badge-locked">Locked</span>
-        <button id="btn-lock" class="icon-btn" title="Lock Vault" style="display: none;">
+        <button id="btn-lock" class="icon-btn" title="Lock Session" style="display: none;">
           🔒
         </button>
       </div>
@@ -24,26 +24,24 @@
 
     <!-- Main View Containers -->
 
-    <!-- 1. Unlock Screen -->
+    <!-- 1. Locked Screen -->
     <div id="view-locked" class="view-panel">
       <div class="lock-graphic">
         <img src="../icons/icon-48.png" alt="Lock" />
       </div>
       <h3>Vault is Locked</h3>
-      <p class="subtitle">Enter your master password to unlock autofill.</p>
+      <p class="subtitle">Unlock your vault in the Pradip Vault Web App to enable autofill.</p>
 
-      <form id="form-unlock" class="auth-form">
-        <div class="input-group">
-          <input type="password" id="input-password" placeholder="Enter Master Password" required autofocus />
-        </div>
-        <button type="submit" id="btn-unlock" class="btn btn-primary btn-full">
-          Unlock Vault
+      <div style="margin-top: 16px; width: 100%;">
+        <button id="btn-open-web-vault" class="btn btn-primary btn-full" style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+          <span>🔐 Open Pradip Vault ↗</span>
         </button>
-        <div id="unlock-error" class="error-msg" style="display: none;"></div>
-      </form>
+      </div>
 
-      <div class="web-link-row">
-        <a href="https://pradip-vault.pages.dev" target="_blank" class="text-link">Open Web Vault ↗</a>
+      <div class="web-link-row" style="margin-top: 16px;">
+        <span style="font-size: 11px; color: #94a3b8; text-align: center; display: block;">
+          Zero-Knowledge Security: The master password is never handled or stored by this extension.
+        </span>
       </div>
     </div>
 
@@ -79,32 +77,17 @@
         </div>
       </section>
 
-      <!-- Vault Search & All Items -->
+      <!-- Vault Search -->
       <section class="section-card">
         <div class="search-wrap">
-          <input type="text" id="input-search" placeholder="Search all saved credentials..." />
-        </div>
-        <div id="list-all-matches" class="credentials-list max-h">
-          <!-- Populated by JS -->
+          <input type="text" id="input-search" placeholder="Search accounts for this site..." />
         </div>
       </section>
-
-      <!-- Import & Sync Action Bar -->
-      <div class="import-action-bar" style="display: flex; flex-direction: column; gap: 6px;">
-        <button id="btn-sync-web-vault" class="btn btn-primary btn-full btn-sm" style="display: flex; align-items: center; justify-content: center; gap: 6px;">
-          🔄 Sync from Web Vault
-        </button>
-        <label for="input-csv-import" class="btn btn-secondary btn-full btn-sm" style="cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
-          📥 Import File (.csv / .json)
-        </label>
-        <input type="file" id="input-csv-import" accept=".csv,.json" style="display: none;" />
-        <div id="import-status-msg" style="display: none; font-size: 11px; text-align: center; margin-top: 2px; color: #10b981;"></div>
-      </div>
 
       <!-- Footer -->
       <footer class="popup-footer">
         <span id="label-entry-count" class="footer-count">0 items</span>
-        <a href="https://pradip-vault.pages.dev" target="_blank" class="text-link">Web Vault ↗</a>
+        <a href="https://pradip-vault.pages.dev" target="_blank" class="text-link">Open Web Vault ↗</a>
       </footer>
     </div>
   </div>

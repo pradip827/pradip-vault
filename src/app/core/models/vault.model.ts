@@ -40,7 +40,7 @@ export function createEmptyVault(vaultName = 'Personal Vault'): DecryptedVault {
   const now = new Date().toISOString();
   return {
     schemaVersion: 1,
-    vaultId: 'vault-' + Math.random().toString(36).substring(2, 10) + '-' + Date.now().toString(36),
+    vaultId: crypto.randomUUID(),
     vaultName: vaultName.trim() || 'Personal Vault',
     revision: 1,
     createdAt: now,

@@ -20,6 +20,37 @@
   let scanDebounceTimer = null;
   let isContextActive = true;
 
+  // --- Strict Origin Normalization & Comparison ---
+
+  function normalizeOrigin(rawUrl) {
+    if (!rawUrl || typeof rawUrl !== 'string') return '';
+    const trimmed = rawUrl.trim();
+    // Strictly require explicit absolute http:// or https:// schemes (no silent scheme inference)
+    if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+      return '';
+    }
+    try {
+      const u = new URL(trimmed);
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+        return '';
+      }
+      if (!u.hostname || u.hostname.startsWith('.') || u.hostname.endsWith('.') || (!u.hostname.includes('.') && u.hostname !== 'localhost')) {
+        return '';
+      }
+      return u.origin.toLowerCase();
+    } catch {
+      return '';
+    }
+  }
+
+  function isOriginMatch(credentialUrl, targetUrl) {
+    if (!credentialUrl || !targetUrl) return false;
+    const credOrigin = normalizeOrigin(credentialUrl);
+    const targetOrigin = normalizeOrigin(targetUrl);
+    if (!credOrigin || !targetOrigin) return false;
+    return credOrigin === targetOrigin;
+  }
+
   function isRuntimeValid() {
     if (!isContextActive) return false;
     try {
@@ -302,6 +333,9 @@
 
     // Click handler for assistant pill
     pill.addEventListener('click', (e) => {
+      // Require genuine trusted user interaction
+      if (!e || e.isTrusted !== true) return;
+
       if (e.target.closest('.zerovault-pill-close')) {
         pill.remove();
         draggablePill = null;
@@ -316,10 +350,10 @@
         return;
       }
 
-      safeSendMessage({ type: 'GET_MATCHING_LOGINS', url: window.location.href }, (res) => {
+      safeSendMessage({ type: 'GET_MATCHING_METADATA' }, (res) => {
         if (!isRuntimeValid()) return;
         const matches = res?.matches || [];
-        renderDropdownForPill(pill, matches, res?.isUnlocked, res?.totalEntries || 0);
+        renderDropdownForPill(pill, matches, res?.isUnlocked, matches.length);
       });
     });
   }
@@ -407,10 +441,10 @@
     // Show suggestions dropdown automatically on input focus
     input.addEventListener('focus', () => {
       updateBadgePosition();
-      safeSendMessage({ type: 'GET_MATCHING_LOGINS', url: window.location.href }, (res) => {
+      safeSendMessage({ type: 'GET_MATCHING_METADATA' }, (res) => {
         if (!isRuntimeValid()) return;
         if (res?.matches?.length > 0 && !activeDropdown) {
-          renderDropdownForInput(input, badge, res.matches, res.isUnlocked, res.totalEntries || 0);
+          renderDropdownForInput(input, badge, res.matches, res.isUnlocked, res.matches.length);
         }
       });
     });
@@ -418,22 +452,24 @@
     input.addEventListener('click', () => {
       updateBadgePosition();
       if (!activeDropdown) {
-        safeSendMessage({ type: 'GET_MATCHING_LOGINS', url: window.location.href }, (res) => {
+        safeSendMessage({ type: 'GET_MATCHING_METADATA' }, (res) => {
           if (!isRuntimeValid()) return;
           if (res?.matches?.length > 0 && !activeDropdown) {
-            renderDropdownForInput(input, badge, res.matches, res.isUnlocked, res.totalEntries || 0);
+            renderDropdownForInput(input, badge, res.matches, res.isUnlocked, res.matches.length);
           }
         });
       }
     });
 
     badge.addEventListener('click', (e) => {
+      // Require genuine trusted user interaction
+      if (!e || e.isTrusted !== true) return;
       e.preventDefault();
       e.stopPropagation();
       input.focus();
-      safeSendMessage({ type: 'GET_MATCHING_LOGINS', url: window.location.href }, (res) => {
+      safeSendMessage({ type: 'GET_MATCHING_METADATA' }, (res) => {
         if (!isRuntimeValid()) return;
-        renderDropdownForInput(input, badge, res?.matches || [], res?.isUnlocked, res?.totalEntries || 0);
+        renderDropdownForInput(input, badge, res?.matches || [], res?.isUnlocked, (res?.matches || []).length);
       });
     });
   }
@@ -522,13 +558,62 @@
 
   function bindDropdownActions(dropdown, input, matches) {
     dropdown.querySelectorAll('.zerovault-dropdown-item').forEach((item) => {
-      item.addEventListener('click', () => {
+      // Click listener: enforce genuine trusted user interaction
+      item.addEventListener('click', (event) => {
+        // ENFORCE GENUINE USER ACTIVATION: Block programmatic clicks (e.g. element.click(), dispatchEvent)
+        if (!event || event.isTrusted !== true) {
+          return;
+        }
+
         const idx = parseInt(item.dataset.idx, 10);
         const cred = matches[idx];
-        if (cred) {
-          applyFill(input, cred);
+        if (cred && cred.id) {
+          // Request ONLY this single credential for autofill
+          safeSendMessage({ type: 'REQUEST_CREDENTIAL_AUTOFILL', credentialId: cred.id }, (res) => {
+            if (res?.success && res.credential) {
+              // Strict same-origin defense in content script
+              if (!isOriginMatch(res.credential.website, window.location.href)) {
+                return;
+              }
+              applyFill(input, res.credential);
+              // Best-effort memory cleanup: wipe temporary credential fields immediately
+              if (res.credential.password) {
+                res.credential.password = '';
+              }
+              res.credential = null;
+            }
+          });
         }
         closeActiveDropdown();
+      });
+
+      // Keyboard listener (Enter / Space): enforce genuine trusted user interaction
+      item.addEventListener('keydown', (event) => {
+        // ENFORCE GENUINE USER ACTIVATION: Block programmatic keyboard events
+        if (!event || event.isTrusted !== true) {
+          return;
+        }
+
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          const idx = parseInt(item.dataset.idx, 10);
+          const cred = matches[idx];
+          if (cred && cred.id) {
+            safeSendMessage({ type: 'REQUEST_CREDENTIAL_AUTOFILL', credentialId: cred.id }, (res) => {
+              if (res?.success && res.credential) {
+                if (!isOriginMatch(res.credential.website, window.location.href)) {
+                  return;
+                }
+                applyFill(input, res.credential);
+                if (res.credential.password) {
+                  res.credential.password = '';
+                }
+                res.credential = null;
+              }
+            });
+          }
+          closeActiveDropdown();
+        }
       });
     });
   }
@@ -536,6 +621,12 @@
   // --- Robust Autofill Value Injection ---
 
   function applyFill(triggeredInput, cred) {
+    if (!cred || typeof cred !== 'object') return;
+    // Security defense-in-depth: Never inject credentials if origin doesn't match current page
+    if (cred.website && !isOriginMatch(cred.website, window.location.href)) {
+      return;
+    }
+
     const { passwordInputs, usernameInputs } = getLoginFields();
 
     let userField = usernameInputs[0];
@@ -651,25 +742,11 @@
     const hostname = window.location.hostname.replace(/^www\./, '');
 
     // Check if this credential already exists in the vault
-    safeSendMessage({ type: 'GET_MATCHING_LOGINS', url: window.location.href }, (res) => {
+    safeSendMessage({ type: 'GET_MATCHING_METADATA' }, (res) => {
       if (!isRuntimeValid()) return;
       const matches = res?.matches || [];
 
-      // 1. Exact match check:
-      // If ANY existing credential for this site already has this exact password, DO NOT PROMPT!
-      const isAlreadySaved = matches.some((m) => {
-        const pMatch = m.password === password;
-        if (!pMatch) return false;
-        // If password matches and usernames match (or either is empty), it's already saved
-        if (!finalUsername || !m.username) return true;
-        return m.username.toLowerCase() === finalUsername.toLowerCase();
-      });
-
-      if (isAlreadySaved) {
-        return; // Password already stored, silently skip prompt!
-      }
-
-      // 2. Check if updating an existing account's password:
+      // Check if updating an existing account:
       const existingAccount = matches.find(
         (m) => finalUsername && m.username && m.username.toLowerCase() === finalUsername.toLowerCase()
       );
@@ -706,15 +783,19 @@
     toast.querySelector('.zerovault-toast-close').onclick = () => toast.remove();
     toast.querySelector('#zv-btn-never').onclick = () => toast.remove();
 
-    toast.querySelector('#zv-btn-save').onclick = () => {
+    toast.querySelector('#zv-btn-save').onclick = (e) => {
+      // Require genuine trusted user click
+      if (!e || e.isTrusted !== true) return;
       toast.querySelector('#zv-btn-save').innerText = 'Saving...';
       safeSendMessage(
         {
-          type: 'SAVE_CREDENTIAL',
-          title: hostname,
-          website: window.location.origin,
-          username: username || '',
-          password
+          type: 'REQUEST_SAVE_CREDENTIAL',
+          credential: {
+            title: hostname,
+            website: window.location.origin,
+            username: username || '',
+            password
+          }
         },
         (res) => {
           if (res && res.success) {
@@ -776,40 +857,32 @@
         if (!isRuntimeValid()) return;
         if (msg.type === 'ZEROVAULT_STATE_CHANGED') {
           triggerScan();
-        } else if (msg.type === 'AUTOFILL_CREDENTIAL' && msg.credential) {
+        } else if (msg.type === 'AUTOFILL_CREDENTIAL') {
+          // SECURITY HARDENING: Verify sender is this extension
+          if (sender && sender.id && chrome.runtime?.id && sender.id !== chrome.runtime.id) {
+            sendResponse?.({ success: false, error: 'Unauthorized sender' });
+            return;
+          }
+          if (!msg.credential || typeof msg.credential !== 'object' || !msg.credential.password) {
+            sendResponse?.({ success: false, error: 'Invalid credential payload' });
+            return;
+          }
+          // Strict Origin Verification: Credential website must strictly match current frame origin
+          if (!isOriginMatch(msg.credential.website, window.location.href)) {
+            sendResponse?.({ success: false, error: 'Origin mismatch: credential cannot be filled on this page' });
+            return;
+          }
           applyFill(null, msg.credential);
-          sendResponse({ success: true });
-        } else if (msg.type === 'TRIGGER_WEB_SYNC') {
-          window.postMessage({ type: 'ZEROVAULT_REQUEST_SYNC' }, '*');
-          sendResponse({ success: true });
+          // Best-effort cleanup of temporary password in message payload
+          if (msg.credential.password) {
+            msg.credential.password = '';
+          }
+          msg.credential = null;
+          sendResponse?.({ success: true });
         }
       });
     }
   } catch (e) {}
-
-  // --- Web App Live Sync Bridge ---
-  window.addEventListener('message', (event) => {
-    if (!isRuntimeValid()) return;
-    if (event.data?.type === 'ZEROVAULT_WEB_VAULT_SYNC' && Array.isArray(event.data.entries)) {
-      safeSendMessage({
-        type: 'SYNC_FROM_WEB_APP',
-        entries: event.data.entries
-      }, (res) => {
-        if (res?.success) {
-          showPromptToast('ZeroVault Live Sync', `Synced ${res.count} accounts from Web Vault!`);
-        }
-      });
-    }
-  });
-
-  const isWebVaultDomain = window.location.hostname.includes('pradip-vault.pages.dev') || window.location.hostname === 'localhost';
-  if (isWebVaultDomain) {
-    setTimeout(() => {
-      if (isRuntimeValid()) {
-        window.postMessage({ type: 'ZEROVAULT_REQUEST_SYNC' }, '*');
-      }
-    }, 600);
-  }
 
   // --- Main Scan Routine ---
 
@@ -835,7 +908,7 @@
     allInputs.forEach((el) => attachBadgeToInput(el));
 
     // Show moveable assistant pill
-    safeSendMessage({ type: 'GET_MATCHING_LOGINS', url: window.location.href }, (res) => {
+    safeSendMessage({ type: 'GET_MATCHING_METADATA' }, (res) => {
       if (!isRuntimeValid()) return;
       createDraggablePill(res?.matches?.length || 0);
     });

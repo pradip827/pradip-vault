@@ -64,6 +64,53 @@ self.addEventListener('message', (event) => {
   }
 });
 
+// List of strictly allowed static file extensions
+const STATIC_ASSET_EXTENSIONS = [
+  '.js', '.mjs', '.css', '.woff', '.woff2', '.ttf', '.eot',
+  '.svg', '.png', '.jpg', '.jpeg', '.gif', '.ico', '.webp',
+  '.webmanifest', '.wasm'
+];
+
+const STATIC_DESTINATIONS = ['script', 'style', 'font', 'image', 'manifest', 'worker'];
+
+/**
+ * Checks if a request targets sensitive API, auth, OAuth, drive, or vault data.
+ * Sensitive requests MUST NEVER be cached.
+ */
+function isSensitiveRequest(url) {
+  const origin = url.origin.toLowerCase();
+  const pathname = url.pathname.toLowerCase();
+  return (
+    origin.includes('google') ||
+    origin.includes('googleapis') ||
+    pathname.startsWith('/api') ||
+    pathname.includes('oauth') ||
+    pathname.includes('drive') ||
+    pathname.includes('vault') ||
+    pathname.includes('credential') ||
+    pathname.includes('session') ||
+    pathname.includes('auth') ||
+    pathname.includes('token')
+  );
+}
+
+/**
+ * Checks if a request matches the explicit static application asset allowlist.
+ */
+function isAllowedStaticAsset(request, url) {
+  if (url.origin !== self.location.origin) return false;
+  if (isSensitiveRequest(url)) return false;
+
+  // Browser destination match (scripts, styles, fonts, images)
+  if (STATIC_DESTINATIONS.includes(request.destination)) {
+    return true;
+  }
+
+  // Explicit extension match
+  const pathname = url.pathname.toLowerCase();
+  return STATIC_ASSET_EXTENSIONS.some((ext) => pathname.endsWith(ext));
+}
+
 // Fetch: Offline interception and intelligent routing
 self.addEventListener('fetch', (event) => {
   const request = event.request;
@@ -80,8 +127,8 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Bypass third-party APIs (Google Drive, OAuth, etc.)
-  if (url.origin.includes('google') || url.pathname.startsWith('/api')) {
+  // Strictly bypass and never cache sensitive requests (APIs, OAuth, Google Drive, tokens, vault data)
+  if (isSensitiveRequest(url)) {
     return;
   }
 
@@ -113,8 +160,8 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. Static Assets (JS chunks, CSS, fonts, icons): Cache-first with Network fallback
-  if (url.origin === self.location.origin) {
+  // 2. Static Assets (JS chunks, CSS, fonts, icons): Explicit Allowlist Only
+  if (isAllowedStaticAsset(request, url)) {
     event.respondWith(
       caches.match(request).then((cachedResponse) => {
         if (cachedResponse) {
@@ -122,7 +169,7 @@ self.addEventListener('fetch', (event) => {
         }
 
         return fetch(request).then((networkResponse) => {
-          // Cache successful responses for same-origin static assets
+          // Cache successful responses for verified static assets only
           if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
             const responseClone = networkResponse.clone();
             caches.open(CACHE_NAME).then((cache) => {

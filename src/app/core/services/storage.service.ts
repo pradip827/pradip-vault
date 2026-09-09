@@ -57,11 +57,21 @@ export class StorageService {
 
   /**
    * Persists an encrypted vault envelope into IndexedDB.
-   * Enforces rollback protection by tracking highestKnownRevision.
+   * Enforces rollback protection: refuses to replace a newer stored envelope with an older revision.
    */
   public async saveVaultEnvelope(envelope: EncryptedVaultEnvelope, revision: number): Promise<void> {
+    if (!Number.isFinite(revision) || revision < 1) {
+      throw new Error(`Invalid vault revision: ${revision}`);
+    }
+
     const db = await this.getDB();
     const existing = await this.loadRecord();
+
+    if (existing && revision < existing.highestKnownRevision) {
+      throw new Error(
+        `Rollback prevented: Cannot replace stored vault envelope at revision ${existing.highestKnownRevision} with older revision ${revision}.`
+      );
+    }
 
     const highestKnownRevision = existing
       ? Math.max(existing.highestKnownRevision, revision)

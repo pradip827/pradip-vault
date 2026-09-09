@@ -63,6 +63,8 @@ There is **no proprietary backend server, database, or cloud authority**. All cr
 | **Active Network Attacker (Replay / Rollback)** | Captures an old encrypted envelope and replays it to revert the vault to a stale revision. | Every envelope carries a monotonically increasing `revision` number. `highestKnownRevision` is tracked locally and rejects any envelope with an equal or lower revision. |
 | **Ciphertext Tamperer / Bit-Flipper** | Modifies bits in stored or in-transit ciphertext to alter decrypted data. | AES-256-GCM authenticated encryption produces a 128-bit authentication tag. RFC 8785 Canonical JSON Additional Authenticated Data (AAD) binds envelope headers. Decryption aborts instantly if any byte is altered. |
 | **Offline Brute-Force Cracker** | Obtains an encrypted `.zerovault` backup and runs GPU/ASIC dictionary attacks. | High-cost Argon2id parameters ($64\text{ MiB}$ RAM, $t=3$ iterations). Highly resistant to GPU and ASIC parallelism. |
+
+> **Note on `.zerovault` backup checksum**: The SHA-256 checksum embedded in backup files detects **accidental corruption or truncation** during storage or transfer. It is **not** a cryptographic authentication tag — an attacker with write access to the backup file can recalculate a valid checksum after modification. The actual cryptographic authenticity boundary is the **AES-256-GCM authentication tag** embedded in the ciphertext. Backup files that pass the SHA-256 check but contain a tampered ciphertext will be rejected by AES-GCM authentication during decryption.
 | **Casual Device Snoop (Unattended Screen)** | Unauthorized person accesses device while user steps away. | Auto-lock engine with configurable inactivity timeout (1m, 5m, 15m, 30m, 60m), immediate lock on tab minimization / visibility change, and Android backgrounding lock via `@capacitor/app`. |
 | **Malicious Clipboard Sniffer** | Third-party app reads copied credentials from system clipboard. | Automatic clipboard erasure with configurable countdown (10s, 30s, 60s, 120s) and manual "Clear Now" hygiene action. |
 | **Malicious Link Injection** | Credential entry contains `javascript:` or `data:` URL attempting XSS on click. | Strict URL sanitization (`sanitizer.ts`) blocks dangerous schemes, enforces `http:`/`https:`, and mandates `rel="noopener noreferrer" target="_blank"`. |
@@ -160,7 +162,101 @@ Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval
 
 ---
 
-## 7. Vulnerability Disclosure Policy
+---
+
+## 8. Browser Extension Security Architecture & Trust Boundaries
+
+The Pradip Vault browser extension operates under a multi-zone zero-trust architecture designed to protect user credentials even when running in hostile page environments:
+
+```
+                      EXTENSION THREE-ZONE TRUST ARCHITECTURE
+                      
+    ┌────────────────────────────────────────────────────────────────────────┐
+    │                        ZONE 1: TRUSTED                                 │
+    │  • Extension Background Service Worker (background.js)                │
+    │  • Extension Popup UI (popup.js)                                       │
+    │  • Ephemeral in-memory session only; ZERO plaintext storage            │
+    │  • Zero master password handling (no activeMasterPassword)             │
+    └────────────────────────────────────────────────────────────────────────┘
+                                    ▲
+                                    │ Browser Native IPC (chrome.runtime)
+                                    │ Least Privilege: Metadata query & Single Credential Fill
+                                    ▼
+    ┌────────────────────────────────────────────────────────────────────────┐
+    │                      ZONE 2: SEMI-TRUSTED                              │
+    │  • Content Script (autofill.js) injected on <all_urls>                 │
+    │  • In-field badge positioning and user interaction                     │
+    │  • Receives ONLY metadata ({ id, title, username }) without passwords   │
+    │  • Receives single password ONLY upon explicit user click              │
+    │  • NO window.postMessage sync listeners; NO vault dump capabilities   │
+    └────────────────────────────────────────────────────────────────────────┘
+                                    ▲
+                                    │ Isolated World Boundary
+                                    ▼
+    ┌────────────────────────────────────────────────────────────────────────┐
+    │                       ZONE 3: UNTRUSTED                                │
+    │  • Arbitrary Web Pages, DOM Scripts, Third-Party Trackers, iframes     │
+    │  • ZERO access to extension APIs                                       │
+    │  • Blocked from calling extension by externally_connectable            │
+    │  • Cannot request, intercept, or trigger vault data                    │
+    └────────────────────────────────────────────────────────────────────────┘
+```
+
+### 8.1 Why Arbitrary Websites Cannot Access the Vault
+1. **Engine-Level Lockdown (`externally_connectable`)**:
+   In `manifest.json`, `externally_connectable` is restricted strictly to `https://pradip-vault.pages.dev/*`. Any arbitrary website (e.g. `https://evil.com`) attempting to invoke `chrome.runtime.sendMessage` or `chrome.runtime.connect` is immediately rejected by the browser engine with a permission error before extension code executes.
+2. **Elimination of `window.postMessage` Transport**:
+   ZeroVault does **NOT** use `window.postMessage(..., '*')` to transmit credentials. Decrypted credentials are never emitted into the window event loop, DOM attributes, or custom events.
+3. **No Full-Vault Extraction API**:
+   There is no `getEntireVault()` or bulk export endpoint available to content scripts or external callers.
+4. **Hostile Iframe Defense**:
+   If the Web Vault is embedded in an `<iframe>`, the extension bridge is completely disabled (`window !== window.top`), defeating clickjacking and cross-origin framing attacks.
+
+### 8.2 Autofill Protocol (Least Privilege)
+1. **Field Detection**: Content script detects login input fields and injects visual lock badges.
+2. **Metadata Query**: Content script requests `GET_MATCHING_METADATA`. The Service Worker verifies `sender.tab.url` and queries the authoritative Web Vault, returning **only metadata** (`{ id, title, username, website }`). **No passwords are included.**
+3. **Explicit User Action**: When the user explicitly clicks a credential item in the badge dropdown, content script requests `REQUEST_CREDENTIAL_AUTOFILL` for that single `credentialId`.
+4. **Strict Same-Origin Enforcement**: The Service Worker and Web Vault verify that `sender.tab.url` matches the credential's website origin using strict normalized same-origin comparison (`isOriginMatch`). Subdomains, substring matches, cousin-domain spoofing (`evilgithub.com`, `github.com.evil.com`), and protocol downgrades are strictly rejected.
+5. **Single-Use Fill**: Only the single requested credential is returned. The content script immediately writes it to the DOM input, dispatches standard input/change events, and discards it from memory.
+
+### 8.3 Autosave Protocol
+1. Content script detects form submission candidates on login forms.
+2. Content script displays an in-page confirmation prompt toast asking: *"Save password for [domain] in Pradip Vault?"*.
+3. **Explicit Confirmation Required**: Passwords are **never silently saved**. Credentials are transmitted only when the user explicitly clicks the "Save" or "Update" button.
+4. The Web Vault validates the request origin, re-encrypts the entry with Argon2id ($64\text{ MiB}$) + AES-256-GCM, and updates IndexedDB.
+
+### 8.4 Lock Behavior & Ephemeral Sessions
+- When the Web Vault locks (via timeout, tab minimization, or manual user action), it dispatches `REVOKE_AUTH_SESSION` and disconnects the native Port.
+- The Extension Service Worker immediately wipes all active session references and notifies open tabs to tear down all in-field badges and dropdowns.
+- **MV3 Service Worker Restarts**: In Manifest V3, background service workers terminate during idle periods. A restarted service worker starts in a **locked state by default** (`activeSession = null`) and never persists decrypted credentials to disk.
+
+### 8.5 Security Limitations & Threat Boundaries
+- **In-Memory JavaScript String Immutability**: Primitive JavaScript strings (e.g. `credential.password`) cannot be forcefully zeroed in-place in V8 memory heaps. ZeroVault mitigates this by eliminating long-lived variables and dereferencing objects immediately.
+- **OS-Level Clipboard Managers**: ZeroVault attempts to clear the clipboard after 30 seconds, but OS-level clipboard history tools (e.g. Windows Clipboard History, macOS Paste) may record copied secrets outside browser sandbox control.
+- **Deployment Pipeline Compromise**: "Zero-knowledge" encryption guarantees that cloud databases and storage backends (Google Drive, Cloudflare Pages) cannot read vault contents. However, zero-knowledge **does not protect against a compromised application bundle**. If the hosting infrastructure serving `https://pradip-vault.pages.dev` were compromised to deliver malicious client JavaScript, an active attacker could capture credentials before encryption. Users requiring immunity against web bundle compromise should inspect the build hash or utilize native compiled packages.
+
+### 8.6 Legitimate-Origin Autofill Limitation (Browser Security Boundary)
+
+When the user explicitly authorizes autofill on a legitimate origin (e.g., `https://github.com`), the decrypted password must be written into the webpage's DOM input element for authentication to proceed. This is a fundamental browser constraint shared by **all** password manager autofill implementations.
+
+Consequently, any JavaScript running on that exact legitimate origin at the moment of fill may potentially observe the autofilled credential by reading the DOM. This includes the page's own scripts, third-party analytics, ad SDKs, or browser extensions with `<all_urls>` access.
+
+**Exact-origin matching DOES protect against:**
+- Subdomain spoofing (`login.evil.com` vs `github.com`)
+- Cousin-domain attacks (`evilgithub.com`, `github.com.evil.com`)
+- Protocol downgrades (`http://github.com`)
+- Cross-origin iframes attempting to trigger autofill
+- Wildcard path matching (only the specific page origin is authorized)
+
+**Exact-origin matching CANNOT protect against:**
+- Malicious or compromised JavaScript running **on the exact same legitimate origin** (e.g. a compromised CDN asset loaded by `github.com`)
+- Browser extensions with `<all_urls>` permissions that inspect DOM state after fill
+
+This is an inherent browser architecture limitation. ZeroVault minimizes exposure by filling only one credential per explicit user click, immediately releasing the reference from memory after DOM write, and not persisting decrypted values to any web-accessible storage.
+
+---
+
+## 9. Vulnerability Disclosure Policy
 
 If you discover a security vulnerability or cryptographic flaw in ZeroVault, please report it responsibly:
 - **Email**: Security reports should be directed to the repository owner via GitHub Security Advisories or private repository message.

@@ -62,7 +62,7 @@
 ### 3.1 Key Hierarchy: Direct Derivation (Option A)
 $$\text{Master Password} \xrightarrow{\text{Argon2id}} \text{Vault Encryption Key (VEK)} \xrightarrow{\text{AES-256-GCM}} \text{Encrypted Vault}$$
 - Single-key direct derivation eliminates wrapped-key failure modes.
-- Changing the master password enforces full re-encryption under a new key, ensuring forward secrecy.
+- Changing the master password performs a full vault re-encryption under a newly derived Argon2id key, invalidating the previous encryption key for new operations. This does **not** constitute forward secrecy in the formal cryptographic sense: any backup, Google Drive copy, or export that was encrypted under the old key remains decryptable with the old password.
 
 ### 3.2 Argon2id Configuration (Offloaded to Web Worker)
 - **Memory Cost ($m$)**: $65{,}536\text{ KiB}$ ($64\text{ MiB}$)
